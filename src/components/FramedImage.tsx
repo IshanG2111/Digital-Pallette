@@ -18,10 +18,13 @@ export default function FramedImage({ frameType, showNegative, signature, childr
   if (frameType === "none") {
     return (
       <div
-        className={`w-full max-w-3xl overflow-hidden rounded-sm ${base}`}
+        className={`w-full overflow-hidden rounded-sm ${base}`}
         style={{ border: "1px solid var(--border)", background: "#000" }}
       >
-        <div style={{ aspectRatio: "16/9", position: "relative" }}>{children}</div>
+        {/* aspect-ratio container with absolutely-filled child */}
+        <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%" }}>
+          <div style={{ position: "absolute", inset: 0 }}>{children}</div>
+        </div>
       </div>
     );
   }
@@ -41,9 +44,9 @@ export default function FramedImage({ frameType, showNegative, signature, childr
         }}
         whileHover={{ rotate: 0, transition: { duration: 0.3 } }}
       >
-        {/* Image area */}
-        <div style={{ width: "100%", aspectRatio: "4/3", background: "#000", position: "relative", overflow: "hidden" }}>
-          {children}
+        {/* Image area — absolute fill so WebGLRenderer h-full works */}
+        <div style={{ width: "100%", position: "relative", paddingBottom: "75%" /* 4:3 */, background: "#000", overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0 }}>{children}</div>
         </div>
 
         {/* Polaroid bottom panel */}
@@ -78,8 +81,8 @@ export default function FramedImage({ frameType, showNegative, signature, childr
         </div>
 
         {/* Image */}
-        <div style={{ width: "100%", aspectRatio: "16/9", background: "#000", position: "relative", overflow: "hidden" }}>
-          {children}
+        <div style={{ width: "100%", position: "relative", paddingBottom: "56.25%" /* 16:9 */, background: "#000", overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0 }}>{children}</div>
         </div>
 
         {/* Bottom sprocket strip */}
@@ -113,8 +116,8 @@ export default function FramedImage({ frameType, showNegative, signature, childr
         {/* Top bar */}
         <div style={{ height: 40, background: "#000" }} />
         {/* Image at 2.39:1 aspect */}
-        <div style={{ width: "100%", aspectRatio: "2.39/1", position: "relative", overflow: "hidden" }}>
-          {children}
+        <div style={{ width: "100%", position: "relative", paddingBottom: "41.84%" /* 2.39:1 */, overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0 }}>{children}</div>
         </div>
         {/* Bottom bar with info */}
         <div className="flex items-center justify-between px-6" style={{ height: 40, background: "#000" }}>

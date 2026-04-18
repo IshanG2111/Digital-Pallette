@@ -530,24 +530,26 @@ export default function WebGLRenderer({
     : { left: `${wipeX * 100}%`, transform: "translateX(-50%)" };
 
   return (
-    <div className="flex flex-col h-full animate-fade-in" style={{ background: "var(--surface-1)" }}>
-      {/* Minimal header bar */}
-      <div
-        className="flex justify-between items-center px-4 py-2 flex-shrink-0"
-        style={{ borderBottom: "1px solid var(--border)" }}
-      >
-        <span className="hand-label">GPU Grade</span>
-        <div className="flex items-center gap-3">
-          {isLoading && <span className="hand-label" style={{ color: "var(--accent)" }}>Loading…</span>}
-          {glError && <span className="text-[10px]" style={{ color: "var(--status-error)", fontFamily: "monospace" }}>{glError}</span>}
-          {sourceStats && (
-            <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: "monospace", color: "var(--accent)" }}>
-              ✓ DNA Match Active
-            </span>
-          )}
-          <span className="hand-label">Raw / Graded</span>
+    <div className="flex flex-col h-full" style={{ background: wipeEnabled ? "var(--surface-1)" : "#000" }}>
+      {/* Header — only shown when wipe is active */}
+      {wipeEnabled && (
+        <div
+          className="flex justify-between items-center px-4 py-2 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <span className="hand-label">GPU Grade</span>
+          <div className="flex items-center gap-3">
+            {isLoading && <span className="hand-label" style={{ color: "var(--accent)" }}>Loading…</span>}
+            {glError && <span className="text-[10px]" style={{ color: "var(--status-error)", fontFamily: "monospace" }}>{glError}</span>}
+            {sourceStats && (
+              <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: "monospace", color: "var(--accent)" }}>
+                ✓ DNA Match Active
+              </span>
+            )}
+            <span className="hand-label">Raw / Graded</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Canvas container */}
       <div
@@ -597,8 +599,8 @@ export default function WebGLRenderer({
           </div>
         )}
 
-        {/* RAW / GRADED labels — constrained to image */}
-        {imageRectRef.current && (
+        {/* RAW / GRADED labels — constrained to image, only when wipe active */}
+        {wipeEnabled && imageRectRef.current && (
           <>
             <div
               className="absolute bottom-3 pointer-events-none"

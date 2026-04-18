@@ -639,135 +639,161 @@ export default function Home() {
                 transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                 className="absolute inset-0 overflow-y-auto no-scrollbar"
               >
-                <div className="min-h-full flex flex-col items-center py-8 px-4 gap-6" style={{ minHeight: "100%" }}>
+                {/* Outer container — centred, max width, good padding */}
+                <div className="min-h-full flex flex-col justify-center px-6 md:px-12 py-8 gap-6 max-w-7xl mx-auto">
 
-                  {/* ── Title ── */}
+                  {/* ── Title row ── */}
                   <motion.div
-                    className="text-center flex-shrink-0"
-                    initial={{ opacity: 0, y: 8 }}
+                    initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1, duration: 0.5 }}
+                    transition={{ delay: 0.05, duration: 0.45 }}
+                    className="flex items-baseline justify-between flex-shrink-0"
                   >
-                    <h2 className="text-xl tracking-[0.25em] uppercase font-light" style={{
-                      fontFamily: "var(--font-mono), monospace",
-                      color: "var(--foreground)"
-                    }}>
-                      The Master
-                    </h2>
-                    <p className="text-[10px] tracking-[0.15em] mt-1" style={{ fontFamily: "monospace", color: "var(--text-tertiary)" }}>
-                      {selectedPalette.name} · Final Grade
-                    </p>
-                  </motion.div>
+                    <div>
+                      <h2 className="text-xl tracking-[0.25em] uppercase font-light" style={{
+                        fontFamily: "var(--font-mono), monospace",
+                        color: "var(--foreground)"
+                      }}>
+                        The Master
+                      </h2>
+                      <p className="text-[10px] tracking-[0.15em] mt-0.5" style={{ fontFamily: "monospace", color: "var(--text-tertiary)" }}>
+                        {selectedPalette.name} · Final Grade
+                      </p>
+                    </div>
 
-                  {/* ── Frame picker ── */}
-                  <motion.div
-                    className="flex-shrink-0 flex items-center gap-1.5"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2, duration: 0.4 }}
-                  >
-                    <span className="hand-label mr-2" style={{ color: "var(--text-tertiary)" }}>Frame</span>
-                    {([
-                      { key: "none",       label: "None" },
-                      { key: "polaroid",   label: "Polaroid" },
-                      { key: "film",       label: "Film" },
-                      { key: "letterbox",  label: "Letterbox" },
-                    ] as { key: FrameType; label: string }[]).map(({ key, label }) => (
-                      <button
-                        key={key}
-                        onClick={() => setFrameType(key)}
-                        className="tape-btn tape-btn-small"
-                        style={frameType === key ? {
-                          background: "var(--accent)",
-                          color: "#0f0f11",
-                          borderColor: "var(--accent)",
-                        } : undefined}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </motion.div>
-
-                  {/* ── Framed image ── */}
-                  <motion.div
-                    className="flex-shrink-0 w-full flex justify-center"
-                    initial={{ scale: 0.95, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.25, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    id="canvas-stage"
-                  >
-                    <FramedImage
-                      frameType={frameType}
-                      showNegative={showNegative}
-                      signature={signatureRef.current}
+                    {/* Frame picker — right-aligned in title row */}
+                    <motion.div
+                      className="flex items-center gap-1.5"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.15, duration: 0.4 }}
                     >
-                      {targetMediaUrl ? (
-                        <WebGLRenderer
-                          imageUrl={targetMediaUrl}
-                          palette={selectedPalette}
-                          controls={controls}
-                          sourceStats={sourceStats}
-                          wipeEnabled={false}
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center h-full" style={{ minHeight: 200 }}>
-                          <p className="hand-label text-sm">No grade to develop.</p>
+                      <span className="hand-label mr-1.5" style={{ color: "var(--text-tertiary)" }}>Frame</span>
+                      {([
+                        { key: "none",      label: "None" },
+                        { key: "polaroid",  label: "Polaroid" },
+                        { key: "film",      label: "Film" },
+                        { key: "letterbox", label: "Letterbox" },
+                      ] as { key: FrameType; label: string }[]).map(({ key, label }) => (
+                        <button
+                          key={key}
+                          onClick={() => setFrameType(key)}
+                          className="tape-btn tape-btn-small"
+                          style={frameType === key ? {
+                            background: "var(--accent)",
+                            color: "#0f0f11",
+                            borderColor: "var(--accent)",
+                          } : undefined}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </motion.div>
+
+                  {/* ── 2-column body ── */}
+                  <div className="flex flex-col lg:flex-row gap-8 items-start flex-shrink-0" id="canvas-stage">
+
+                    {/* LEFT: Framed image — takes 65% on desktop */}
+                    <motion.div
+                      className="w-full lg:flex-[65]"
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.2, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <FramedImage
+                        frameType={frameType}
+                        showNegative={showNegative}
+                        signature={signatureRef.current}
+                      >
+                        {targetMediaUrl ? (
+                          <WebGLRenderer
+                            imageUrl={targetMediaUrl}
+                            palette={selectedPalette}
+                            controls={controls}
+                            sourceStats={sourceStats}
+                            wipeEnabled={false}
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center" style={{ minHeight: 260, background: "var(--surface-3)" }}>
+                            <p className="hand-label text-sm">No grade to develop.</p>
+                          </div>
+                        )}
+                      </FramedImage>
+                    </motion.div>
+
+                    {/* RIGHT: Controls panel — takes 35% on desktop */}
+                    <motion.div
+                      className="w-full lg:flex-[35] flex flex-col gap-5"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    >
+
+                      {/* Color DNA strip */}
+                      {sourceDNA && (
+                        <div>
+                          <p className="hand-label text-[9px] mb-2" style={{ color: "var(--text-tertiary)" }}>Color DNA Reference</p>
+                          <div className="flex h-5 overflow-hidden rounded-sm" style={{ border: "1px solid var(--border)" }}>
+                            {sourceDNA.map((c, i) => (
+                              <div key={i} className="flex-1" style={{ backgroundColor: `rgb(${c.join(",")})` }} />
+                            ))}
+                          </div>
                         </div>
                       )}
-                    </FramedImage>
-                  </motion.div>
 
-                  {/* ── Color DNA strip ── */}
-                  {sourceDNA && (
-                    <motion.div
-                      className="flex-shrink-0 w-full max-w-2xl"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.35 }}
-                    >
-                      <p className="hand-label text-[9px] mb-1.5" style={{ color: "var(--text-tertiary)" }}>Color DNA Reference</p>
-                      <div className="flex h-4 overflow-hidden rounded-sm" style={{ border: "1px solid var(--border)" }}>
-                        {sourceDNA.map((c, i) => (
-                          <div key={i} className="flex-1" style={{ backgroundColor: `rgb(${c.join(",")})` }} />
-                        ))}
+                      {/* Active palette swatch */}
+                      <div>
+                        <p className="hand-label text-[9px] mb-2" style={{ color: "var(--text-tertiary)" }}>Active Palette</p>
+                        <div className="flex h-5 overflow-hidden rounded-sm" style={{ border: "1px solid var(--border)" }}>
+                          {selectedPalette.colors.map((c, i) => (
+                            <div key={i} className="flex-1" style={{ backgroundColor: `rgb(${c.join(",")})` }} />
+                          ))}
+                        </div>
+                        <p className="text-[10px] mt-1.5 tracking-wider" style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>
+                          {selectedPalette.name}
+                        </p>
                       </div>
+
+                      {/* Divider */}
+                      <div style={{ height: 1, background: "var(--border)" }} />
+
+                      {/* Director signature */}
+                      <div>
+                        <p className="hand-label text-[9px] mb-2" style={{ color: "var(--text-tertiary)" }}>Director&apos;s Signature</p>
+                        <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
+                          <SignaturePad onSign={(url) => { signatureRef.current = url; }} width={360} height={72} />
+                        </div>
+                      </div>
+
+                      {/* Divider */}
+                      <div style={{ height: 1, background: "var(--border)" }} />
+
+                      {/* Action buttons */}
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={handleExport}
+                          disabled={!targetMediaUrl || exporting}
+                          className="tape-btn btn-primary w-full justify-center"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          {exporting ? "Processing…" : exported ? "Exported ✓" : "Export Image"}
+                        </button>
+                        <div className="flex gap-2">
+                          <button onClick={handleExportLUT} className="tape-btn tape-btn-small flex-1 justify-center">
+                            <Download className="w-3 h-3" /> .CUBE LUT
+                          </button>
+                          <button onClick={() => transitionTo(3)} className="tape-btn tape-btn-small flex-1 justify-center">
+                            <RotateCcw className="w-3 h-3" /> Re-Edit
+                          </button>
+                        </div>
+                      </div>
+
                     </motion.div>
-                  )}
+                  </div>
 
-                  {/* ── Signature + Export controls ── */}
-                  <motion.div
-                    className="flex-shrink-0 w-full max-w-2xl"
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 }}
-                  >
-                    {/* Director signature */}
-                    <p className="hand-label text-[9px] mb-1.5" style={{ color: "var(--text-tertiary)" }}>Director&apos;s Signature</p>
-                    <div className="mb-4" style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
-                      <SignaturePad onSign={(url) => { signatureRef.current = url; }} width={480} height={60} />
-                    </div>
-
-                    {/* Action row */}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <button onClick={() => transitionTo(3)} className="tape-btn tape-btn-small flex-shrink-0">
-                        <RotateCcw className="w-3 h-3" /> Re-Edit
-                      </button>
-                      <button onClick={handleExportLUT} className="tape-btn tape-btn-small flex-shrink-0">
-                        <Download className="w-3 h-3" /> Export .CUBE
-                      </button>
-                      <button
-                        onClick={handleExport}
-                        disabled={!targetMediaUrl || exporting}
-                        className="tape-btn btn-primary flex-shrink-0 ml-auto"
-                      >
-                        <Camera className="w-3.5 h-3.5" />
-                        {exporting ? "Processing…" : exported ? "Exported ✓" : "Export Image"}
-                      </button>
-                    </div>
-                  </motion.div>
-
-                  {/* Breathing room at bottom */}
-                  <div className="flex-shrink-0 h-8" />
+                  {/* Bottom breathing room */}
+                  <div className="h-6 flex-shrink-0" />
                 </div>
               </motion.div>
             )}
