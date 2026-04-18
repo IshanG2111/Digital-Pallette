@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Architects_Daughter } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const handFont = Architects_Daughter({
+  variable: "--font-hand",
+  weight: "400",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const monoFont = Geist_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Director's Palette — Cinematic Color Grading",
-  description: "A browser-based cinematic color grading tool. Upload media, extract palettes, grade in real time, and export stunning results.",
+  title: "Director's Palette — The Sketchbook Workstation",
+  description: "A hand-crafted cinematic color grading tool. Extract palettes from film, grade imagery with GPU shaders, export production-ready LUTs.",
 };
 
 export default function RootLayout({
@@ -25,9 +27,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${handFont.variable} ${monoFont.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/* suppressHydrationWarning prevents hydration mismatch from browser extensions injecting attributes */}
+      <body className="h-full" suppressHydrationWarning>{children}</body>
     </html>
   );
 }
