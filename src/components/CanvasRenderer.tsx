@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Palette, ControlState } from "@/types";
-import { applyColorGrade } from "@/lib/colorEngine";
 import { Maximize2, SplitSquareHorizontal, Loader2 } from "lucide-react";
 
 interface CanvasRendererProps {
@@ -20,50 +19,43 @@ export default function CanvasRenderer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const processedCanvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  
+  const workerRef = useRef<Worker | null>(null);
 
   const [sliderPosition, setSliderPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [workerReady, setWorkerReady] = useState(false);
 
-  // Stable refs for palette/controls so callbacks don't go stale
-  const paletteRef = useRef(palette);
-  paletteRef.current = palette;
-  const controlsRef = useRef(controls);
-  controlsRef.current = controls;
+  // Set up Worker
+  useEffect(() => {
+    workerRef.current = new Worker(
+      new URL("../lib/workers/gradingEngine.worker.ts", import.meta.url)
+    );
 
-  const renderProcessed = useCallback(
-    (img: HTMLImageElement, w: number, h: number) => {
-      const ctx = processedCanvasRef.current?.getContext("2d");
-      if (!ctx || !processedCanvasRef.current) return;
+    workerRef.current.onmessage = (e) => {
+      const { type, payload } = e.data;
+      if (type === "INIT_DONE") {
+        setWorkerReady(true);
+      } else if (type === "RENDER_DONE") {
+        const outBmp = payload.imageBitmap;
+        const pCtx = processedCanvasRef.current?.getContext("2d");
+        if (pCtx && outBmp) {
+          pCtx.clearRect(0, 0, processedCanvasRef.current!.width, processedCanvasRef.current!.height);
+          pCtx.drawImage(outBmp, 0, 0);
+        }
+        setIsProcessing(false);
+      }
+    };
 
-      setIsProcessing(true);
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
-      processedCanvasRef.current.width = w;
-      processedCanvasRef.current.height = h;
-      ctx.drawImage(img, 0, 0, w, h);
-
-      const imageData = ctx.getImageData(0, 0, w, h);
-      const paletteColors = paletteRef.current?.colors ?? [];
-      const ctrl = controlsRef.current;
-
-      applyColorGrade(
-        imageData.data,
-        paletteColors,
-        ctrl.intensity,
-        ctrl.contrast,
-        ctrl.saturation,
-        ctrl.temperature
-      );
-
-      ctx.putImageData(imageData, 0, 0);
-      setIsProcessing(false);
-    },
-    []
-  );
-
-  const fitAndDraw = useCallback(
-    (img: HTMLImageElement) => {
+  const fitAndInitWorker = useCallback(
+    async (img: HTMLImageElement) => {
       const maxWidth = containerRef.current?.clientWidth || 800;
       const maxHeight = containerRef.current?.clientHeight || 600;
       let w = img.naturalWidth;
@@ -82,10 +74,18 @@ export default function CanvasRenderer({
         canvasRef.current.height = h;
         ctxOrig.drawImage(img, 0, 0, w, h);
       }
+      
+      if (processedCanvasRef.current) {
+        processedCanvasRef.current.width = w;
+        processedCanvasRef.current.height = h;
+      }
 
-      renderProcessed(img, w, h);
+      // Init worker with base ImageBitmap
+      setWorkerReady(false);
+      const bmp = await createImageBitmap(img, { resizeWidth: w, resizeHeight: h });
+      workerRef.current?.postMessage({ type: "INIT", payload: { imageBitmap: bmp } }, [bmp]);
     },
-    [renderProcessed]
+    []
   );
 
   // Load image when URL changes
@@ -96,17 +96,22 @@ export default function CanvasRenderer({
     img.src = imageUrl;
     img.onload = () => {
       imgRef.current = img;
-      fitAndDraw(img);
+      fitAndInitWorker(img);
     };
-  }, [imageUrl, fitAndDraw]);
+  }, [imageUrl, fitAndInitWorker]);
 
-  // Re-grade when palette/controls change (without reloading image)
+  // Request Render when props change
   useEffect(() => {
-    const img = imgRef.current;
-    if (img && dimensions.width > 0 && dimensions.height > 0) {
-      renderProcessed(img, dimensions.width, dimensions.height);
-    }
-  }, [palette, controls, dimensions.width, dimensions.height, renderProcessed]);
+    if (!workerReady || dimensions.width === 0) return;
+    setIsProcessing(true);
+    workerRef.current?.postMessage({
+       type: "RENDER",
+       payload: {
+          palette: palette?.colors ?? [],
+          controls: controls
+       }
+    });
+  }, [palette, controls, dimensions.width, workerReady]);
 
   // Pointer handlers for before/after slider
   const handlePointerDown = () => setIsDragging(true);
@@ -121,10 +126,10 @@ export default function CanvasRenderer({
   // ── Empty state ──
   if (!imageUrl) {
     return (
-      <div className="flex-1 w-full h-full min-h-[400px] glass-panel rounded-xl flex flex-col items-center justify-center text-white/30 border border-dashed border-white/[0.06]">
-        <Maximize2 className="w-10 h-10 mb-3 opacity-40" />
-        <p className="text-sm font-medium">Upload media to start grading</p>
-        <p className="text-xs text-white/20 mt-1">
+      <div className="flex-1 w-full h-full min-h-[400px] glass-panel rounded-xl flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200">
+        <Maximize2 className="w-10 h-10 mb-3 opacity-40 text-slate-300" />
+        <p className="text-sm font-bold text-slate-500">Upload media to start grading</p>
+        <p className="text-xs text-slate-400 mt-1">
           The live preview will appear here
         </p>
       </div>
@@ -132,17 +137,17 @@ export default function CanvasRenderer({
   }
 
   return (
-    <div className="flex flex-col gap-3 h-full animate-fade-in">
+    <div className="flex flex-col gap-3 h-full animate-fade-in p-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-sm font-semibold tracking-wider uppercase text-white/50 flex items-center gap-2">
-          <SplitSquareHorizontal className="w-4 h-4" /> Live Preview
+      <div className="flex justify-between items-center mb-2 px-1">
+        <h2 className="text-xs font-bold tracking-widest uppercase text-slate-400 flex items-center gap-2">
+          <SplitSquareHorizontal className="w-3.5 h-3.5" /> Live Preview
         </h2>
         <div className="flex items-center gap-2">
           {isProcessing && (
             <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
           )}
-          <span className="text-[11px] font-mono text-white/40 bg-white/5 px-2 py-0.5 rounded">
+          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 uppercase tracking-widest px-2 py-0.5 rounded-full shadow-sm">
             Before / After
           </span>
         </div>
@@ -151,45 +156,45 @@ export default function CanvasRenderer({
       {/* Canvas container */}
       <div
         ref={containerRef}
-        className="relative flex-1 w-full glass-panel rounded-xl overflow-hidden cursor-ew-resize flex items-center justify-center select-none"
+        className="relative flex-1 w-full rounded-lg overflow-hidden cursor-ew-resize flex items-center justify-center select-none bg-slate-100 shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] border border-slate-200/60"
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerUp}
       >
         <div
-          className="relative"
-          style={{ width: dimensions.width, height: dimensions.height }}
+          className="relative transition-opacity duration-300 shadow-md"
+          style={{ width: dimensions.width, height: dimensions.height, opacity: dimensions.width > 0 ? 1 : 0 }}
         >
           {/* Original canvas */}
           <canvas
             ref={canvasRef}
-            className="absolute top-0 left-0 w-full h-full rounded-md"
+            className="absolute top-0 left-0 w-full h-full"
           />
 
           {/* Processed canvas – clipped from right side */}
           <canvas
             ref={processedCanvasRef}
-            className="absolute top-0 left-0 w-full h-full rounded-md pointer-events-none"
+            className="absolute top-0 left-0 w-full h-full pointer-events-none"
             style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
           />
 
           {/* Slider divider */}
           <div
-            className="absolute top-0 bottom-0 w-px bg-white/70 pointer-events-none z-10"
+            className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_8px_rgba(0,0,0,0.3)] pointer-events-none z-10"
             style={{
               left: `${sliderPosition}%`,
               transform: "translateX(-50%)",
             }}
           >
             {/* Handle */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow-lg flex items-center justify-center">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center border border-slate-100">
               <svg
-                width="12"
-                height="12"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#111"
+                stroke="#64748b"
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -201,10 +206,10 @@ export default function CanvasRenderer({
           </div>
 
           {/* Labels */}
-          <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-mono text-white/70 uppercase tracking-wider">
+          <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-bold text-slate-600 uppercase tracking-widest shadow-sm">
             Original
           </div>
-          <div className="absolute bottom-3 right-3 bg-primary/50 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-mono text-white/90 uppercase tracking-wider">
+          <div className="absolute bottom-3 right-3 bg-primary text-white backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest shadow-sm">
             Graded
           </div>
         </div>
