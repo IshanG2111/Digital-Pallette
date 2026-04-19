@@ -8,13 +8,14 @@ interface ControlPanelProps {
   controls: ControlState;
   onChange: (key: keyof ControlState, value: number | boolean) => void;
   onReset: () => void;
+  onAutoGrade?: () => void;
 }
 
 type SliderDef = { id: keyof ControlState; label: string; min: number; max: number };
 
 const GROUPS: { title: string; sliders: SliderDef[] }[] = [
   {
-    title: "Light",
+    title: "LIGHT",
     sliders: [
       { id: "intensity",   label: "Blend",      min: 0,    max: 100 },
       { id: "exposure",    label: "Exposure",   min: -100, max: 100 },
@@ -24,7 +25,7 @@ const GROUPS: { title: string; sliders: SliderDef[] }[] = [
     ],
   },
   {
-    title: "Color",
+    title: "COLOR",
     sliders: [
       { id: "temperature", label: "Temperature", min: -100, max: 100 },
       { id: "tint",        label: "Tint",        min: -100, max: 100 },
@@ -34,7 +35,7 @@ const GROUPS: { title: string; sliders: SliderDef[] }[] = [
   },
 ];
 
-export default function ControlPanel({ controls, onChange, onReset }: ControlPanelProps) {
+export default function ControlPanel({ controls, onChange, onReset, onAutoGrade }: ControlPanelProps) {
   let isDefault = true;
   for (const g of GROUPS) {
     for (const s of g.sliders) {
@@ -44,108 +45,92 @@ export default function ControlPanel({ controls, onChange, onReset }: ControlPan
   if (controls.skinToneProtection !== DEFAULT_CONTROLS.skinToneProtection) isDefault = false;
 
   return (
-    <section className="flex flex-col h-full" id="control-panel" style={{ gap: 0 }}>
-      {/* Panel header */}
-      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{
-        borderBottom: "1px solid var(--border)"
-      }}>
-        <span className="hand-label" style={{ color: "var(--text-secondary)" }}>Adjustments</span>
-        <button
-          onClick={onReset}
-          disabled={isDefault}
-          className="tape-btn tape-btn-small"
-          title="Reset all"
-        >
-          <RotateCcw className="w-3 h-3" />
-          <span>Reset</span>
-        </button>
+    <section className="flex flex-col h-full bg-transparent overflow-hidden px-10 py-12" id="control-panel">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-10 flex-shrink-0">
+        <span className="text-[11px] font-bold uppercase tracking-[0.4em] text-text-secondary">ADJUSTMENTS</span>
+        <div className="flex items-center gap-6">
+          {onAutoGrade && (
+            <button
+              onClick={onAutoGrade}
+              className="uppercase font-bold tracking-[0.3em] text-[10px] text-accent hover:text-white transition-colors"
+              title="Auto Match DNA"
+            >
+              [ AUTO GRADE ]
+            </button>
+          )}
+          <button
+            onClick={onReset}
+            disabled={isDefault}
+            className="uppercase font-bold tracking-[0.3em] text-[10px] text-text-secondary hover:text-foreground transition-colors disabled:opacity-30"
+            title="Reset all"
+          >
+            [ RESET ]
+          </button>
+        </div>
       </div>
 
+      <div className="w-full h-[1px] bg-white/10 mb-10" />
+
       {/* Skin protection toggle */}
-      <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0" style={{
-        borderBottom: "1px solid var(--border)",
-        background: "var(--surface-1)"
-      }}>
-        <span className="hand-label text-[10px]" style={{ color: "var(--text-tertiary)" }}>
-          Skin Protection
-        </span>
+      <div className="flex items-center justify-between pb-10 flex-shrink-0">
+        <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">SKIN PROTECTION</span>
         <button
           onClick={() => onChange("skinToneProtection", !controls.skinToneProtection)}
-          className="relative flex-shrink-0"
-          style={{
-            width: 36, height: 20,
-            background: controls.skinToneProtection ? "var(--accent)" : "var(--surface-4)",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            transition: "background 0.2s ease",
-            cursor: "pointer"
-          }}
+          className="relative flex-shrink-0 flex items-center justify-center"
+          style={{ width: 32, height: 16 }}
         >
+          {/* Hairline track */}
+          <div className="absolute inset-x-0 h-px bg-border" />
+          {/* Thumb */}
           <span style={{
             position: "absolute",
-            top: 3, left: controls.skinToneProtection ? 18 : 3,
+            top: 2, left: controls.skinToneProtection ? 20 : 0,
             width: 12, height: 12,
-            background: controls.skinToneProtection ? "#0f0f11" : "var(--text-tertiary)",
-            borderRadius: "50%",
-            transition: "left 0.2s ease"
+            background: controls.skinToneProtection ? "var(--foreground)" : "var(--text-tertiary)",
+            transition: "left 0.4s cubic-bezier(0.19, 1, 0.22, 1), background 0.4s ease"
           }} />
         </button>
       </div>
 
       {/* Slider groups */}
-      <div className="flex-1 overflow-y-auto no-scrollbar">
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
         {GROUPS.map((group, gIdx) => (
-          <div
-            key={group.title}
-            style={{ borderBottom: gIdx < GROUPS.length - 1 ? "1px solid var(--border)" : "none" }}
-          >
-            {/* Group label */}
-            <div className="px-4 pt-4 pb-2">
-              <span className="hand-label text-[9px]" style={{ color: "var(--text-tertiary)" }}>
-                {group.title}
-              </span>
-            </div>
-
-            {/* Sliders */}
-            <div className="px-4 pb-4 flex flex-col gap-4">
+          <div key={group.title} className="mb-14">
+            <h4 className="text-[12px] font-bold tracking-[0.4em] mb-8 text-foreground/40">{group.title}</h4>
+            <div className="flex flex-col gap-8">
               {group.sliders.map((slider) => {
                 const value = controls[slider.id] as number;
                 const isChanged = value !== (DEFAULT_CONTROLS[slider.id] as number);
-                // Compute fill % for the range track
-                const range = slider.max - slider.min;
-                const pct = ((value - slider.min) / range) * 100;
 
                 return (
-                  <div key={slider.id} className="flex flex-col gap-1.5">
+                  <div key={slider.id} className="flex flex-col gap-3 relative group">
                     <div className="flex items-center justify-between">
                       <label
-                        className="text-[11px]"
+                        className="text-[11px] font-bold uppercase tracking-[0.2em] transition-colors duration-500"
                         style={{
-                          fontFamily: "monospace",
                           color: isChanged ? "var(--foreground)" : "var(--text-secondary)"
                         }}
                       >
                         {slider.label}
                       </label>
                       <span
-                        className="text-[11px] tabular-nums"
+                        className="text-[12px] font-bold tabular-nums tracking-widest transition-colors duration-500"
                         style={{
-                          fontFamily: "monospace",
                           color: isChanged ? "var(--accent)" : "var(--text-tertiary)"
                         }}
                       >
                         {value > 0 && slider.min < 0 ? "+" : ""}{value}
                       </span>
                     </div>
+                    {/* The slider itself relies on globals.css minimal styling */}
                     <input
                       type="range"
                       min={slider.min}
                       max={slider.max}
                       value={value}
                       onChange={(e) => onChange(slider.id, Number(e.target.value))}
-                      className="w-full"
-                      // CSS custom property for the progressive fill
-                      style={{ "--val": `${pct}%` } as React.CSSProperties}
+                      className="w-full opacity-50 group-hover:opacity-100 transition-opacity duration-500"
                     />
                   </div>
                 );

@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Palette, ControlState } from "@/types";
-
-import type { ChannelStats } from "@/lib/workers/histogramWorker";
+import { computeCholesky, invertCholesky, multiplyMat3 } from "@/lib/colorEngine";
+import type { ChannelStats } from "@/lib/colorEngine";
 
 interface WebGLRendererProps {
   imageUrl: string | null;
@@ -48,11 +48,10 @@ const FRAG = `
   uniform vec3 u_p3;
   uniform vec3 u_p4;
 
-  // Histogram transfer (source stats)
+  // Histogram transfer (Covariance Whitening/Coloring)
   uniform vec3 u_src_mean;   // [rMean, gMean, bMean] / 255
-  uniform vec3 u_src_std;    // [rStd,  gStd,  bStd]  / 255
   uniform vec3 u_tgt_mean;
-  uniform vec3 u_tgt_std;
+  uniform mat3 u_cov_transform; 
   uniform bool u_histogram_match;
 
   varying vec2 v_uv;
@@ -163,13 +162,12 @@ const FRAG = `
     col = clamp(col, 0.0, 1.0);
 
     // ───────────────────────────────────────────────────────────────────────
-    // STAGE 4: Histogram Matching (Palette DNA Transfer)
-    // Formula: I_new = (I - μ_target) × (σ_source / σ_target) + μ_source
+    // STAGE 4: Covariance Whitening & Coloring (Color DNA Transfer)
+    // Formula: I_new = M_cov * (I - μ_target) + μ_source
     // ───────────────────────────────────────────────────────────────────────
     vec3 matched = col;
     if (u_histogram_match) {
-      vec3 sigma_ratio = u_src_std / max(u_tgt_std, vec3(0.001));
-      matched = (col - u_tgt_mean) * sigma_ratio + u_src_mean;
+      matched = u_cov_transform * (col - u_tgt_mean) + u_src_mean;
       matched = clamp(matched, 0.0, 1.0);
     }
 
@@ -276,7 +274,7 @@ export default function WebGLRenderer({
         "u_highlights","u_shadows","u_temperature","u_tint",
         "u_saturation","u_vibrance","u_intensity","u_skin_protect",
         "u_p0","u_p1","u_p2","u_p3","u_p4",
-        "u_src_mean","u_src_std","u_tgt_mean","u_tgt_std","u_histogram_match",
+        "u_src_mean","u_tgt_mean","u_cov_transform","u_histogram_match",
       ];
       uniformNames.forEach(n => { uRef.current[n] = gl.getUniformLocation(prog, n); });
 
@@ -341,8 +339,8 @@ export default function WebGLRenderer({
     gl.bindTexture(gl.TEXTURE_2D, texRef.current);
     gl.uniform1i(u.u_image, 0);
 
-    // Wipe: use 1.0 when disabled (show fully graded)
-    gl.uniform1f(u.u_wipe_x, wipeEnabled ? wipeX : 1.0);
+    // Wipe: use 0.0 when disabled (show fully graded, since pixel.x >= 0.0)
+    gl.uniform1f(u.u_wipe_x, wipeEnabled ? wipeX : 0.0);
 
     // Primary
     const ev = (controls.exposure / 100) * 5;        // –5 to +5 EV
@@ -368,21 +366,35 @@ export default function WebGLRenderer({
     gl.uniform3fv(u.u_p3, getP(3));
     gl.uniform3fv(u.u_p4, getP(4));
 
-    // Histogram matching
+    // Covariance matching
     const tgt = targetStatsRef.current;
     const src = sourceStats ?? null;
-    const doMatch = !!(tgt && src);
+    const doMatch = !!(tgt && src && tgt.cov && src.cov);
     gl.uniform1i(u.u_histogram_match, doMatch ? 1 : 0);
     if (doMatch && src && tgt) {
       gl.uniform3fv(u.u_src_mean, [src.rMean/255, src.gMean/255, src.bMean/255]);
-      gl.uniform3fv(u.u_src_std,  [src.rStd/255,  src.gStd/255,  src.bStd/255]);
       gl.uniform3fv(u.u_tgt_mean, [tgt.rMean/255, tgt.gMean/255, tgt.bMean/255]);
-      gl.uniform3fv(u.u_tgt_std,  [tgt.rStd/255,  tgt.gStd/255,  tgt.bStd/255]);
+
+      // Calculate M = L_src * inv(L_tgt)
+      const L_src = computeCholesky(src.cov);
+      const L_tgt = computeCholesky(tgt.cov);
+      const inv_L_tgt = invertCholesky(L_tgt);
+      const M = multiplyMat3(L_src, inv_L_tgt);
+      
+      // WebGL expects matrices in column-major order, but since M is 3x3 array we transpose for uniformMatrix3fv
+      // Although wait, if we explicitly provide the array directly, uniformMatrix(..., false, M) expects column-major.
+      // So let's transpose M just in case.
+      const M_col_major = [
+        M[0], M[3], M[6],
+        M[1], M[4], M[7],
+        M[2], M[5], M[8]
+      ];
+      
+      gl.uniformMatrix3fv(u.u_cov_transform, false, M_col_major);
     } else {
       gl.uniform3fv(u.u_src_mean, [0.5,0.5,0.5]);
-      gl.uniform3fv(u.u_src_std,  [0.1,0.1,0.1]);
       gl.uniform3fv(u.u_tgt_mean, [0.5,0.5,0.5]);
-      gl.uniform3fv(u.u_tgt_std,  [0.1,0.1,0.1]);
+      gl.uniformMatrix3fv(u.u_cov_transform, false, [1,0,0, 0,1,0, 0,0,1]);
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -569,75 +581,44 @@ export default function WebGLRenderer({
         {/* Wipe divider — only shown when wipeEnabled is true */}
         {wipeEnabled && (
           <div
-            className="absolute top-0 bottom-0 pointer-events-none z-10"
+            className="absolute top-0 bottom-0 pointer-events-none z-10 flex flex-col items-center justify-center"
             style={{
               ...wipeLineStyle,
-              width: 1,
-              background: "rgba(255,255,255,0.6)",
-              boxShadow: "0 0 8px rgba(212,168,83,0.4), 1px 0 1px rgba(0,0,0,0.5)",
+              width: 2,
+              background: "rgba(255,255,255,0.8)",
+              boxShadow: "0 0 15px rgba(212,168,83,0.8), 0 0 5px rgba(255,255,255,1)",
             }}
           >
-            {/* Drag handle */}
+            {/* Elegant Drag Handle */}
             <div
-              className="absolute top-1/2 left-1/2 flex items-center justify-center"
+              className="absolute top-1/2 left-1/2 flex items-center justify-center transition-transform hover:scale-110 active:scale-95 duration-300"
               style={{
                 transform: "translate(-50%, -50%)",
-                width: 28, height: 28,
-                background: "var(--surface-3)",
-                border: "1px solid var(--border-bright)",
-                borderRadius: 4,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                width: 48, height: 48,
+                borderRadius: "50%",
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,0.4)",
+                backdropFilter: "blur(8px)",
+                boxShadow: "inset 0 0 20px rgba(212,168,83,0.1), 0 4px 12px rgba(0,0,0,0.5)",
                 cursor: "ew-resize",
                 pointerEvents: "all",
               }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#a0a0aa" strokeWidth="2.5" strokeLinecap="round">
-                <polyline points="9 18 4 12 9 6" />
-                <polyline points="15 6 20 12 15 18" />
-              </svg>
+              <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_var(--accent)]" />
+              <div className="absolute inset-0 rounded-full border border-accent opacity-50 animate-ping" style={{ animationDuration: '3s' }} />
+            </div>
+            
+            {/* Cinematic Floating Labels along the line */}
+            <div className="absolute top-12 -left-8 transform -rotate-90 origin-bottom-right" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "Outfit", fontSize: 9, letterSpacing: "0.2em" }}>
+               RAW
+            </div>
+            <div className="absolute top-12 left-2 transform rotate-90 origin-bottom-left" style={{ color: "var(--accent)", fontFamily: "Outfit", fontSize: 9, letterSpacing: "0.2em", fontWeight: "bold" }}>
+               GRADED
             </div>
           </div>
         )}
 
-        {/* RAW / GRADED labels — constrained to image, only when wipe active */}
-        {wipeEnabled && imageRectRef.current && (
-          <>
-            <div
-              className="absolute bottom-3 pointer-events-none"
-              style={{
-                left: imageRectRef.current.left + 8,
-                background: "rgba(0,0,0,0.6)",
-                border: "1px solid var(--border)",
-                padding: "2px 8px",
-                borderRadius: 2,
-                fontFamily: "monospace",
-                fontSize: 10,
-                letterSpacing: "0.12em",
-                color: "#a0a0aa",
-                textTransform: "uppercase",
-              }}
-            >
-              Raw
-            </div>
-            <div
-              className="absolute bottom-3 pointer-events-none"
-              style={{
-                right: imageRectRef.current.left + 8,
-                background: "rgba(212,168,83,0.15)",
-                border: "1px solid rgba(212,168,83,0.4)",
-                padding: "2px 8px",
-                borderRadius: 2,
-                fontFamily: "monospace",
-                fontSize: 10,
-                letterSpacing: "0.12em",
-                color: "#d4a853",
-                textTransform: "uppercase",
-              }}
-            >
-              Graded
-            </div>
-          </>
-        )}
+
       </div>
     </div>
   );

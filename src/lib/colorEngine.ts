@@ -10,6 +10,8 @@ export interface ChannelStats {
   rMean: number; rStd: number;
   gMean: number; gStd: number;
   bMean: number; bStd: number;
+  mean: [number, number, number];
+  cov: [number, number, number, number, number, number, number, number, number];
 }
 
 // ─── Clamp helper ─────────────────────────────────────────────────────────────
@@ -253,15 +255,189 @@ export function computeChannelStats(data: Uint8ClampedArray): ChannelStats {
   let rs = 0, gs = 0, bs = 0;
   for (let i = 0; i < data.length; i += 4) { rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; }
   const rM = rs / n, gM = gs / n, bM = bs / n;
-  let rv = 0, gv = 0, bv = 0;
+  
+  let c00=0, c01=0, c02=0;
+  let c11=0, c12=0;
+  let c22=0;
+  
   for (let i = 0; i < data.length; i += 4) {
-    rv += (data[i] - rM) ** 2;
-    gv += (data[i + 1] - gM) ** 2;
-    bv += (data[i + 2] - bM) ** 2;
+    const dr = data[i] - rM;
+    const dg = data[i + 1] - gM;
+    const db = data[i + 2] - bM;
+    c00 += dr * dr; c01 += dr * dg; c02 += dr * db;
+    c11 += dg * dg; c12 += dg * db;
+    c22 += db * db;
   }
+  
   return {
-    rMean: rM, rStd: Math.sqrt(rv / n),
-    gMean: gM, gStd: Math.sqrt(gv / n),
-    bMean: bM, bStd: Math.sqrt(bv / n),
+    rMean: rM, rStd: Math.sqrt(c00 / n),
+    gMean: gM, gStd: Math.sqrt(c11 / n),
+    bMean: bM, bStd: Math.sqrt(c22 / n),
+    mean: [rM, gM, bM],
+    cov: [
+      c00/n, c01/n, c02/n,
+      c01/n, c11/n, c12/n,
+      c02/n, c12/n, c22/n
+    ]
   };
+}
+
+export function computeCholesky(cov: number[]): number[] {
+  // Add epsilon to diagonal for strict positive-definiteness
+  const eps = 1e-4;
+  const a00 = cov[0]+eps, a01 = cov[1], a02 = cov[2];
+  const a11 = cov[4]+eps, a12 = cov[5];
+  const a22 = cov[8]+eps;
+
+  const l00 = Math.sqrt(Math.max(a00, eps));
+  const l10 = a01 / l00;
+  const l20 = a02 / l00;
+  
+  const l11 = Math.sqrt(Math.max(a11 - l10*l10, eps));
+  const l21 = (a12 - l20*l10) / l11;
+  
+  const l22 = Math.sqrt(Math.max(a22 - l20*l20 - l21*l21, eps));
+  
+  // Return lower triangular L
+  return [
+    l00, 0, 0,
+    l10, l11, 0,
+    l20, l21, l22
+  ];
+}
+
+export function invertCholesky(L: number[]): number[] {
+  const l00 = L[0];
+  const l10 = L[3], l11 = L[4];
+  const l20 = L[6], l21 = L[7], l22 = L[8];
+
+  const i00 = 1 / l00;
+  const i10 = -l10 * i00 / l11;
+  const i11 = 1 / l11;
+  const i20 = -(l20 * i00 + l21 * i10) / l22;
+  const i21 = -l21 * i11 / l22;
+  const i22 = 1 / l22;
+
+  return [
+    i00, 0, 0,
+    i10, i11, 0,
+    i20, i21, i22
+  ];
+}
+
+export function multiplyMat3(A: number[], B: number[]): number[] {
+  const out = new Array(9);
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      out[i*3+j] = A[i*3+0]*B[0*3+j] + A[i*3+1]*B[1*3+j] + A[i*3+2]*B[2*3+j];
+    }
+  }
+  return out;
+}
+
+// ─── Video Barcode Renderer Helpers ──────────────────────────────────────────
+
+export interface FrameData {
+  timestamp: number;
+  color: { r: number; g: number; b: number };
+  peaks: any;
+  palette: [number, number, number][];
+  isSceneChange: boolean;
+}
+
+export function calculateEuclideanDistance(
+  c1: { r: number; g: number; b: number },
+  c2: { r: number; g: number; b: number }
+): number {
+  return Math.sqrt(
+    Math.pow(c1.r - c2.r, 2) +
+    Math.pow(c1.g - c2.g, 2) +
+    Math.pow(c1.b - c2.b, 2)
+  );
+}
+
+// ─── Extract Dominant Colors via K-Means in LAB Space ────────────────────────
+
+export function extractDominantColorsLAB(
+  data: Uint8ClampedArray,
+  k: number,
+  maxSamples: number = 2000
+): [number, number, number][] {
+  // 1. Sample pixels (skip transparent)
+  const samplesLAB: [number, number, number][] = [];
+  const step = Math.max(4, Math.floor(data.length / (maxSamples * 4)) * 4);
+  
+  for (let i = 0; i < data.length; i += step) {
+    if (data[i + 3] < 128) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    samplesLAB.push(rgbToLab(r, g, b));
+    if (samplesLAB.length >= maxSamples) break;
+  }
+
+  if (samplesLAB.length === 0) {
+    return Array(k).fill([0, 0, 0]);
+  }
+
+  // 2. K-means setup
+  const centroids: [number, number, number][] = [];
+  // Initialize uniformly to avoid clustering dead zones
+  const stride = Math.floor(samplesLAB.length / k);
+  for (let i = 0; i < k; i++) {
+    const idx = Math.min(i * stride + Math.floor(Math.random()*(stride/2)), samplesLAB.length - 1);
+    centroids.push([...samplesLAB[idx]] as [number, number, number]);
+  }
+
+  const maxIters = 15;
+  for (let iter = 0; iter < maxIters; iter++) {
+    const clusters: [number, number, number][][] = Array.from({ length: k }, () => []);
+
+    for (let i = 0; i < samplesLAB.length; i++) {
+      const sample = samplesLAB[i];
+      let minDist = Infinity;
+      let closestIdx = 0;
+      for (let c = 0; c < k; c++) {
+        const centroid = centroids[c];
+        const dist = Math.pow(sample[0] - centroid[0], 2) +
+                     Math.pow(sample[1] - centroid[1], 2) +
+                     Math.pow(sample[2] - centroid[2], 2);
+        if (dist < minDist) {
+          minDist = dist;
+          closestIdx = c;
+        }
+      }
+      clusters[closestIdx].push(sample);
+    }
+
+    let changed = false;
+    for (let c = 0; c < k; c++) {
+      const cluster = clusters[c];
+      if (cluster.length === 0) continue;
+      let sumL = 0, sumA = 0, sumB = 0;
+      for (let j = 0; j < cluster.length; j++) {
+        sumL += cluster[j][0];
+        sumA += cluster[j][1];
+        sumB += cluster[j][2];
+      }
+      const newL = sumL / cluster.length;
+      const newA = sumA / cluster.length;
+      const newB = sumB / cluster.length;
+
+      const diff = Math.abs(centroids[c][0] - newL) + Math.abs(centroids[c][1] - newA) + Math.abs(centroids[c][2] - newB);
+      if (diff > 0.01) changed = true;
+
+      centroids[c] = [newL, newA, newB];
+    }
+    if (!changed) break;
+  }
+
+  // 3. Convert LAB back to RGB and sort by Lightness (L*)
+  const enriched = centroids.map(c => {
+    const rgb = labToRgb(c[0], c[1], c[2]);
+    return {
+      luma: c[0],
+      rgb: [Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])] as [number, number, number]
+    };
+  });
+
+  return enriched.sort((a, b) => a.luma - b.luma).map(e => e.rgb);
 }

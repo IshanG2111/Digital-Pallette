@@ -7,11 +7,8 @@ import PaletteSelector from "@/components/PaletteSelector";
 import WebGLRenderer from "@/components/WebGLRenderer";
 import VideoBarcodeRenderer from "@/components/VideoBarcodeRenderer";
 import ControlPanel from "@/components/ControlPanel";
-import SmpteLoader from "@/components/SmpteLoader";
 import ChalkLoader from "@/components/ChalkLoader";
-import SignaturePad from "@/components/SignaturePad";
 import StudioOpener from "@/components/StudioOpener";
-import FramedImage, { FrameType } from "@/components/FramedImage";
 import {
   Palette,
   ControlState,
@@ -20,28 +17,18 @@ import {
   RGB,
 } from "@/types";
 import { PRESET_PALETTES } from "@/lib/constants";
-import { generateCubeLUT, computeChannelStats, ChannelStats } from "@/lib/colorEngine";
+import { generateCubeLUT, computeChannelStats, ChannelStats, extractDominantColorsLAB } from "@/lib/colorEngine";
 import { useUISound } from "@/hooks/useUISound";
-import {
-  ChevronRight,
-  ChevronUp,
-  ArrowLeft,
-  Wand2,
-  Download,
-  Aperture,
-  Camera,
-  X,
-  RotateCcw,
-} from "lucide-react";
+import { Aperture } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CONSTANTS
    ═══════════════════════════════════════════════════════════════════════════ */
 const ACTS = [
-  { num: 1, label: "Ingest",   subtitle: "The Empty Studio" },
-  { num: 2, label: "Alchemy",  subtitle: "DNA Scan" },
-  { num: 3, label: "Darkroom", subtitle: "The Workstation" },
-  { num: 4, label: "Master",   subtitle: "The Final Cut" },
+  { num: 1, label: "INGEST" },
+  { num: 2, label: "ALCHEMY" },
+  { num: 3, label: "DARKROOM" },
+  { num: 4, label: "MASTER" },
 ];
 
 const springStiff  = { type: "spring" as const, stiffness: 300, damping: 30 };
@@ -55,11 +42,8 @@ export default function Home() {
   const [act, setAct] = useState(1);
   const [filmBurnKey, setFilmBurnKey] = useState(0);
   const [showFlash, setShowFlash] = useState(false);
-  const [showNegative, setShowNegative] = useState(false);
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [frameType, setFrameType] = useState<FrameType>("none");
   const { playCrinkle, playSlateClap, playScratch, playShutter, playProjectorHum } = useUISound();
 
   /* ── Extraction ───────────────────────────────────────────────────────── */
@@ -71,33 +55,24 @@ export default function Home() {
   const [sourceMediaUrl, setSourceMediaUrl] = useState<string | null>(null);
   const [targetMediaUrl, setTargetMediaUrl] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState<MediaType>(null);
-  const [sourceThumb, setSourceThumb] = useState<string | null>(null);
+  const [sourceStats, setSourceStats] = useState<ChannelStats | null>(null);
 
   /* ── Grading ───────────────────────────────────────────────────────────── */
   const [selectedPalette, setSelectedPalette] = useState<Palette>(PRESET_PALETTES[0]);
   const [controls, setControls] = useState<ControlState>({ ...DEFAULT_CONTROLS });
-  const [sourceStats, setSourceStats] = useState<ChannelStats | null>(null);
 
   /* ── Export ─────────────────────────────────────────────────────────────── */
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
   const signatureRef = useRef<string | null>(null);
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     FILM BURN TRANSITION
-     ═══════════════════════════════════════════════════════════════════════ */
   const fireFilmBurn = () => setFilmBurnKey(k => k + 1);
-
   const transitionTo = (n: number) => {
     fireFilmBurn();
     setTimeout(() => setAct(n), 280);
   };
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     HANDLERS
-     ═══════════════════════════════════════════════════════════════════════ */
-
-  /* ACT 1 → 2: Source upload ──────────────────────────────────────────── */
+  /* ACT 1 → 2: Source upload */
   const handleSourceUpload = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
     setSourceMediaUrl(url);
@@ -116,13 +91,8 @@ export default function Home() {
         const ctx = c.getContext("2d")!;
         ctx.drawImage(img, 0, 0, c.width, c.height);
         const imgData = ctx.getImageData(0, 0, c.width, c.height);
-        const stats = computeChannelStats(imgData.data);
-        setSourceStats(stats);
-        setSourceThumb(c.toDataURL("image/jpeg", 0.6));
-
-        // Extract quick dominant colors from image data (simplified K-means)
-        const extracted = extractDominantColors(imgData.data, 5);
-        setSourceDNA(extracted);
+        setSourceStats(computeChannelStats(imgData.data));
+        setSourceDNA(extractDominantColorsLAB(imgData.data, 5));
       };
     }
 
@@ -135,32 +105,7 @@ export default function Home() {
     }, 400);
   }, [playSlateClap, playProjectorHum]);
 
-  /* Simplified dominant color extraction ──────────────────────────────── */
-  function extractDominantColors(data: Uint8ClampedArray, k: number): RGB[] {
-    // Sample pixels uniformly
-    const samples: RGB[] = [];
-    const step = Math.max(1, Math.floor(data.length / 4 / 500));
-    for (let i = 0; i < data.length; i += step * 4) {
-      samples.push([data[i], data[i + 1], data[i + 2]]);
-    }
-    // Simple bucket quantization (fast approximation of K-means)
-    const buckets: Map<string, { sum: RGB; count: number }> = new Map();
-    for (const s of samples) {
-      const key = `${Math.round(s[0] / 32)}_${Math.round(s[1] / 32)}_${Math.round(s[2] / 32)}`;
-      const b = buckets.get(key) || { sum: [0, 0, 0] as RGB, count: 0 };
-      b.sum = [b.sum[0] + s[0], b.sum[1] + s[1], b.sum[2] + s[2]];
-      b.count++;
-      buckets.set(key, b);
-    }
-    const sorted = [...buckets.values()].sort((a, b) => b.count - a.count);
-    return sorted.slice(0, k).map(b => [
-      Math.round(b.sum[0] / b.count),
-      Math.round(b.sum[1] / b.count),
-      Math.round(b.sum[2] / b.count),
-    ] as RGB);
-  }
-
-  /* ACT 2: Extraction progress ────────────────────────────────────────── */
+  /* ACT 2: Extraction progress */
   useEffect(() => {
     if (act !== 2 || extractionDone) return;
     const interval = setInterval(() => {
@@ -177,13 +122,12 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [act, extractionDone, playCrinkle]);
 
-  /* ACT 3: Target upload ──────────────────────────────────────────────── */
+  /* ACT 3: Target upload */
   const handleTargetUpload = useCallback((file: File) => {
     setTargetMediaUrl(URL.createObjectURL(file));
     playCrinkle();
   }, [playCrinkle]);
 
-  /* Controls ──────────────────────────────────────────────────────────── */
   const handleControlChange = useCallback((key: keyof ControlState, value: number | boolean) => {
     setControls(prev => ({ ...prev, [key]: value }));
     setExported(false);
@@ -192,56 +136,67 @@ export default function Home() {
   const handleReset = useCallback(() => {
     setControls({ ...DEFAULT_CONTROLS });
     setExported(false);
-    playScratch();
-  }, [playScratch]);
+  }, []);
 
   const handleSelectPalette = useCallback((p: Palette) => {
     setSelectedPalette(p);
     setExported(false);
   }, []);
 
-  const handleMagicMatch = () => {
+  const handleAutoGrade = useCallback(() => {
     playScratch();
-    setControls(prev => ({
-      ...prev,
-      intensity: 75, exposure: 5, contrast: 12,
-      highlights: -8, shadows: 8, saturation: 5, vibrance: 18,
-    }));
-  };
-
-  /* Export ─────────────────────────────────────────────────────────────── */
-  const handleExportLUT = useCallback(() => {
-    playShutter();
-    const lutStr = generateCubeLUT(selectedPalette.colors, controls, 32);
-    const blob = new Blob([lutStr], { type: "text/plain" });
-    const a = document.createElement("a");
-    a.download = `Directors_Palette_${Date.now()}.cube`;
-    a.href = URL.createObjectURL(blob);
-    a.click();
-  }, [selectedPalette, controls, playShutter]);
-
+    
+    // Check if we have sourceDNA to calculate clever dynamics
+    if (sourceDNA && sourceDNA.length > 0) {
+      // Calculate overall perceptual luminance to guess exposure/contrast
+      let totalLuma = 0;
+      sourceDNA.forEach(c => totalLuma += (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]));
+      const avgLuma = totalLuma / sourceDNA.length;
+      
+      // If dark image, boost exposure slightly and open shadows.
+      // If bright image, deepen shadows and decrease highlights.
+      const isDark = avgLuma < 80;
+      const isBright = avgLuma > 180;
+      
+      setControls(prev => ({
+        ...prev,
+        intensity: 85,
+        exposure: isDark ? 15 : (isBright ? -5 : 5),
+        contrast: 15,
+        highlights: isBright ? -15 : -5,
+        shadows: isDark ? 15 : 5,
+        saturation: 10,
+        vibrance: 25,
+      }));
+    } else {
+      // Fallback
+      setControls(prev => ({
+        ...prev,
+        intensity: 80, exposure: 0, shadow: 10,
+        contrast: 15, vibrance: 20
+      }));
+    }
+  }, [sourceDNA, playScratch]);
   const handleExport = useCallback(() => {
-    const canvas = document.querySelector("#canvas-stage canvas") as HTMLCanvasElement | null;
-    if (!canvas) return;
+    const webglCanvas = document.querySelector("#canvas-stage canvas") as HTMLCanvasElement | null;
+    if (!webglCanvas) return;
+    
     setExporting(true);
     setShowFlash(true);
     playShutter();
-    setTimeout(() => { setShowFlash(false); setShowNegative(true); }, 150);
-    setTimeout(() => setShowNegative(false), 400);
+    setTimeout(() => { setShowFlash(false); }, 800);
+
     setTimeout(() => {
       const a = document.createElement("a");
       a.download = `directors_palette_${Date.now()}.png`;
-      a.href = canvas.toDataURL("image/png");
+      a.href = webglCanvas.toDataURL("image/png");
       a.click();
       setExporting(false);
       setExported(true);
     }, 550);
   }, [playShutter]);
 
-  /* Navigation ────────────────────────────────────────────────────────── */
-  const goTo = (n: number) => {
-    if (n >= 1 && n <= 4 && n <= act) transitionTo(n);
-  };
+  const goTo = (n: number) => { if (n >= 1 && n <= 4 && n <= act) transitionTo(n); };
 
   /* ═══════════════════════════════════════════════════════════════════════
      RENDER
@@ -253,151 +208,109 @@ export default function Home() {
           {showOpener && <StudioOpener onComplete={() => setShowOpener(false)} />}
         </AnimatePresence>
 
-        {/* ── Global Overlays ─────────────────────────────────────────── */}
-        {showFlash && (
-          <div className="absolute inset-0 z-[200] bg-white animate-shutter pointer-events-none" />
-        )}
-        {showNegative && (
-          <div className="absolute inset-0 z-[199] animate-negative-flash pointer-events-none" />
-        )}
-        {/* Film Burn Wipe */}
+        {showFlash && <div className="absolute inset-0 z-[200] bg-white animate-shutter" />}
         <AnimatePresence>
-          <div key={filmBurnKey} className="absolute inset-0 z-[150] pointer-events-none animate-film-burn" />
+          {filmBurnKey > 0 && <div key={filmBurnKey} className="absolute inset-0 z-[150] pointer-events-none animate-film-burn bg-white opacity-0" />}
         </AnimatePresence>
 
-        {/* ═══════════ HEADER ═══════════ */}
-        <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 md:px-8 z-50" style={{
-          background: "var(--surface-1)",
-          borderBottom: "1px solid var(--border)",
-        }}>
-          <div className="flex items-center gap-3">
-            {/* Logo */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-6 h-6 rounded-full border flex items-center justify-center flex-shrink-0"
-                style={{ borderColor: "#d4a853", background: "rgba(212,168,83,0.1)" }}>
-                <Aperture className="w-3 h-3" style={{ color: "#d4a853" }} />
+        {/* ═══════════ SPATIAL NAVIGATION ═══════════ */}
+        {/* Floating Top Left - Context */}
+        <div className="absolute top-8 left-8 z-50 pointer-events-none">
+           <div className="flex items-center gap-3">
+              <Aperture className="w-4 h-4 text-accent animate-spin-slow" />
+              <div className="flex flex-col">
+                 <span className="micro-label">DIRECTOR'S PALETTE</span>
+                 <span className="text-[10px] text-text-tertiary">VIRTUAL MASTERPIECE</span>
               </div>
-              <span className="text-[11px] font-medium tracking-[0.2em] uppercase hidden md:block" style={{ color: "var(--text-secondary)", fontFamily: "monospace" }}>
-                Director&apos;s Palette
-              </span>
-            </div>
+           </div>
+        </div>
 
-            {/* Separator */}
-            <div className="w-px h-4 hidden md:block" style={{ background: "var(--border)" }} />
+        {/* Floating Top Right - Progression */}
+        <div className="absolute top-8 right-8 flex items-center gap-8 z-50">
+           {act > 1 && (
+             <button onClick={() => goTo(act - 1)} className="gallery-btn">
+                [ BACK ]
+             </button>
+           )}
+           {act === 2 && extractionDone && (
+             <button onClick={() => transitionTo(3)} className="gallery-btn gallery-btn-forward text-accent">
+                [ PROCEED TO DARKROOM ]
+             </button>
+           )}
+           {act === 3 && targetMediaUrl && (
+             <button onClick={() => transitionTo(4)} className="gallery-btn gallery-btn-forward text-accent">
+                [ APPROVE MASTER ]
+             </button>
+           )}
+           {act === 4 && (
+             <button onClick={handleExport} disabled={exporting} className="gallery-btn gallery-btn-forward text-accent">
+                {exporting ? "[ PROCESSING ]" : "[ EXPORT ]"}
+             </button>
+           )}
+        </div>
 
-            {/* Step nav */}
-            <nav className="flex items-center gap-1">
-              {ACTS.map((a, i) => (
-                <React.Fragment key={a.num}>
-                  <button
-                    onClick={() => goTo(a.num)}
-                    disabled={a.num > act}
-                    className={`relative px-3 py-1.5 text-[10px] tracking-[0.1em] uppercase transition-all rounded-sm ${
-                      act === a.num
-                        ? "text-foreground"
-                        : a.num < act
-                        ? "text-muted cursor-pointer hover:text-foreground"
-                        : "text-border cursor-not-allowed"
-                    }`}
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    {act === a.num && (
-                      <span className="absolute inset-0 rounded-sm" style={{ background: "rgba(212,168,83,0.08)", border: "1px solid rgba(212,168,83,0.2)" }} />
-                    )}
-                    <span className="relative">{a.label}</span>
-                  </button>
-                  {i < 3 && <span className="text-[9px]" style={{ color: "var(--border)" }}>›</span>}
-                </React.Fragment>
-              ))}
-            </nav>
-          </div>
+        {/* Floating Bottom Left - Progress */}
+        <div className="absolute bottom-8 left-8 z-50 flex items-center gap-4">
+           {ACTS.map((a, i) => (
+             <div key={a.num} className="flex items-center gap-4">
+                <span className="micro-label" style={{ opacity: act === a.num ? 1 : 0.3 }}>
+                   0{a.num}
+                </span>
+                {i < 3 && <div className="w-8 h-px bg-border" />}
+             </div>
+           ))}
+        </div>
 
-          {/* Contextual actions */}
-          <div className="flex items-center gap-2">
-            {act > 1 && (
-              <button onClick={() => goTo(act - 1)} className="tape-btn tape-btn-small">
-                <ArrowLeft className="w-3 h-3" /> <span className="hidden md:inline">Back</span>
-              </button>
-            )}
-            {act === 2 && extractionDone && (
-              <button onClick={() => transitionTo(3)} className="tape-btn btn-primary">
-                Continue <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {act === 3 && targetMediaUrl && (
-              <button onClick={() => transitionTo(4)} className="tape-btn btn-primary">
-                Continue <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {act === 4 && (
-              <div className="flex gap-2">
-                <button onClick={() => transitionTo(3)} className="tape-btn tape-btn-small">
-                  <RotateCcw className="w-3 h-3" /> <span className="hidden md:inline">Re-Edit</span>
-                </button>
-                <button
-                  onClick={handleExport}
-                  disabled={!targetMediaUrl || exporting}
-                  className={`tape-btn btn-primary`}
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                  {exporting ? "Processing…" : exported ? "Exported ✓" : "Export"}
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
+        {/* ═══════════ GIANT TYPOGRAPHIC WATERMARK ═══════════ */}
+        <div className="absolute inset-0 flex items-center justify-center z-[-1] pointer-events-none overflow-hidden">
+           <AnimatePresence mode="wait">
+             <motion.div
+                key={`watermark-${act}`}
+                initial={{ opacity: 0, y: 50, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -50, scale: 1.05 }}
+                transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
+                className="gallery-title"
+             >
+                {ACTS[act-1].label}
+             </motion.div>
+           </AnimatePresence>
+        </div>
 
         {/* ═══════════ MAIN STAGE ═══════════ */}
-        <div className="flex-1 min-h-0 relative" style={{ background: "var(--background)" }}>
+        <div className="flex-1 w-full h-full relative z-10" style={{ perspective: "1500px" }}>
           <AnimatePresence mode="wait">
 
-                      {/* ──────────── ACT 1: THE INGEST ──────────── */}
+            {/* ──────────── ACT 1: THE INGEST ──────────── */}
             {act === 1 && (
               <motion.div
                 key="act1"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute inset-0 flex items-center justify-center p-6 md:p-16"
+                initial={{ opacity: 0, rotateY: 15, scale: 0.9 }}
+                animate={{ opacity: 1, rotateY: 5, rotateX: 2, scale: 1 }}
+                exit={{ opacity: 0, rotateY: -10, scale: 0.95 }}
+                transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
+                className="absolute inset-0 flex items-center justify-center"
               >
-                <div className="w-full max-w-2xl flex flex-col items-center gap-6">
-                  {/* Title */}
-                  <motion.div
-                    className="text-center"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1, duration: 0.5 }}
-                  >
-                    <h1 className="text-2xl md:text-3xl font-light tracking-[0.15em] uppercase mb-2" style={{
-                      fontFamily: "var(--font-mono), monospace",
-                      color: "var(--foreground)"
-                    }}>
-                      Import Source
-                    </h1>
-                    <p className="text-[11px] tracking-widest" style={{
-                      fontFamily: "monospace",
-                      color: "var(--text-secondary)"
-                    }}>
-                      Drop a hero video or image to begin color grading
-                    </p>
-                  </motion.div>
-
-                  {/* Drop Zone */}
-                  <motion.div
-                    initial={{ scale: 0.96, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.15, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    className="w-full"
-                    style={{ height: "360px" }}
-                  >
-                    <MediaUploader
-                      onUpload={handleSourceUpload}
-                      onClear={() => { setSourceMediaUrl(null); setSourceType(null); }}
-                      currentMediaUrl={sourceMediaUrl}
-                      mediaType={sourceType}
-                    />
-                  </motion.div>
+                <div className="w-full max-w-2xl px-12">
+                   <div className="reveal-mask mb-12">
+                     <h1 className="font-serif text-5xl font-light text-foreground animate-curtain leading-[1.1]">
+                        Initiate the<br/><span className="text-accent italic">Canvas</span>
+                     </h1>
+                   </div>
+                   
+                   <motion.div
+                     initial={{ opacity: 0, y: 20 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     transition={{ delay: 0.4, duration: 0.8, ease: [0.19, 1, 0.22, 1] }}
+                     className="w-full h-[400px]"
+                   >
+                     <MediaUploader
+                       onUpload={handleSourceUpload}
+                       onClear={() => { setSourceMediaUrl(null); setSourceType(null); }}
+                       currentMediaUrl={sourceMediaUrl}
+                       mediaType={sourceType}
+                     />
+                   </motion.div>
                 </div>
               </motion.div>
             )}
@@ -406,223 +319,152 @@ export default function Home() {
             {act === 2 && (
               <motion.div
                 key="act2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={springStiff}
-                className="absolute inset-0 flex flex-col md:flex-row p-4 md:p-8 gap-4 md:gap-8"
+                className="absolute inset-0 flex items-center p-16 gap-16 transform-style-3d"
               >
-                {/* Left: Source (60% — the hero frame) */}
-                <div className="flex-[7] min-h-0 flex flex-col gap-2">
-                  <h2 className="hand-label text-sm flex items-center gap-2">
-                    Source — DNA Scan
-                    {!extractionDone && (
-                      <span className="text-[9px] text-muted animate-pulse">scanning...</span>
-                    )}
-                  </h2>
-                  <div className="sketch-panel flex-1 overflow-hidden p-2 relative">
-                    {/* Scanning overlay */}
-                    {!extractionDone && (
-                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/90 backdrop-blur-md rounded-sm border border-border">
-                        <ChalkLoader
-                          progress={Math.min(extractionProgress, 100)}
-                          message="ANALYZING CHALK DUST..."
-                        />
-                      </div>
-                    )}
-                    {/* Charcoal scan line */}
-                    {!extractionDone && (
-                      <div
-                        className="absolute left-0 right-0 h-[2px] bg-charcoal z-30 pointer-events-none"
-                        style={{
-                          top: `${Math.min(extractionProgress, 100)}%`,
-                          boxShadow: "0 0 8px rgba(44,36,24,0.4)",
-                          transition: "top 0.15s linear",
-                        }}
-                      />
-                    )}
-                    {sourceType === "video" && sourceMediaUrl ? (
-                      <VideoBarcodeRenderer videoUrl={sourceMediaUrl} onExtractPalette={handleSelectPalette} />
-                    ) : sourceMediaUrl ? (
-                      <img src={sourceMediaUrl} alt="Source" className="w-full h-full object-contain rounded-sm" />
-                    ) : (
-                      <SmpteLoader message="No source" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Right: Palette output (40%) */}
+                {/* Image display */}
                 <motion.div
-                  initial={{ x: 40, opacity: 0 }}
-                  animate={{ x: 0, opacity: extractionDone ? 1 : 0.3 }}
-                  transition={{ delay: 0.15, ...springGentle }}
-                  className="flex-[5] min-h-0 flex flex-col gap-3 overflow-y-auto no-scrollbar"
+                   initial={{ opacity: 0, x: -60, rotateY: 20 }}
+                   animate={{ opacity: 1, x: 0, rotateY: 8 }}
+                   exit={{ opacity: 0, scale: 0.95, rotateY: 15 }}
+                   transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
+                   className="flex-[6] h-[70vh] relative flex items-center justify-center p-8 border border-white/5 shadow-2xl"
+                   style={{ transformOrigin: "right center" }}
                 >
-                  {/* Extracted DNA strip */}
-                  {extractionDone && sourceDNA && (
-                    <motion.div
-                      initial={{ y: 15, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      className="flex-shrink-0"
-                    >
-                      <h3 className="hand-label text-[10px] font-bold text-foreground tracking-[0.15em] mb-1.5 uppercase">
-                        ★ EXTRACTED DNA
-                      </h3>
-                      <div className="flex h-10 rounded-sm overflow-hidden border-2 border-charcoal shadow-md"
-                        style={{ boxShadow: "0 0 12px rgba(197,165,90,0.2)" }}
-                      >
-                        {sourceDNA.map((c, i) => (
-                          <div key={i} className="flex-1 h-full" style={{ backgroundColor: `rgb(${c.join(",")})` }} />
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
+                   {sourceType === "video" && sourceMediaUrl ? (
+                     <VideoBarcodeRenderer videoUrl={sourceMediaUrl} onExtractPalette={handleSelectPalette} />
+                   ) : sourceMediaUrl ? (
+                     <img src={sourceMediaUrl} alt="Source" className="w-full h-full object-contain filter grayscale opacity-80 mix-blend-screen" />
+                   ) : null}
 
-                  <PaletteSelector
-                    selectedPaletteId={selectedPalette.id}
-                    onSelectPalette={handleSelectPalette}
-                    sourceDNA={sourceDNA}
-                  />
+                   {/* Scanning overlay */}
+                   {!extractionDone && (
+                     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 backdrop-blur-md">
+                       <ChalkLoader progress={extractionProgress} message="ANALYZING COLOR GEOMETRY..." />
+                     </div>
+                   )}
                 </motion.div>
+
+                {/* Extracted DNA Side */}
+                <motion.div
+                   initial={{ opacity: 0, x: 60, rotateY: -20 }}
+                   animate={{ opacity: extractionDone ? 1 : 0, rotateY: -8 }}
+                   transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1], delay: 0.2 }}
+                   className="flex-[4] flex flex-col justify-center h-full max-h-[70vh]"
+                   style={{ transformOrigin: "left center" }}
+                >
+                   <span className="micro-label mb-8 text-accent">CHROMATIC EXTRACTION</span>
+                   {extractionDone && sourceDNA && (
+                     <div className="flex flex-col gap-8 w-full">
+                        {sourceDNA.map((c, i) => (
+                           <motion.div 
+                              key={i}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.3 + (i * 0.1), duration: 0.6 }}
+                              className="flex items-center gap-6 group cursor-pointer"
+                           >
+                              <div className="flex-1 h-px bg-white/20 group-hover:bg-white/50 transition-colors" />
+                              <div 
+                                 className="w-16 h-16 rounded-sm shadow-2xl transition-transform duration-500 group-hover:scale-125 group-hover:rotate-6"
+                                 style={{ backgroundColor: `rgb(${c.join(",")})`, boxShadow: `0 0 20px rgba(${c.join(",")}, 0.3)` }} 
+                              />
+                              <div className="flex-1 h-px bg-white/20 group-hover:bg-white/50 transition-colors" />
+                           </motion.div>
+                        ))}
+                     </div>
+                   )}
+                </motion.div>
+
               </motion.div>
             )}
 
-                        {/* ──────────── ACT 3: THE DARKROOM ──────────── */}
+            {/* ──────────── ACT 3: THE DARKROOM ──────────── */}
             {act === 3 && (
               <motion.div
                 key="act3"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="absolute inset-0 flex flex-col"
+                transition={{ duration: 1, ease: [0.19, 1, 0.22, 1] }}
+                className="absolute inset-0 flex flex-col items-center justify-center"
               >
-                {/* Fullscreen viewport */}
-                <div className="flex-1 relative overflow-hidden" id="canvas-stage">
+                <div className="absolute inset-0 -z-10 blur-[100px] opacity-10 pointer-events-none" style={{ backgroundColor: selectedPalette.colors[2] ? `rgb(${selectedPalette.colors[2].join(",")})` : "var(--accent)" }} />
+                
+                <motion.div 
+                  className="w-full max-w-[80%] h-[75vh] relative shadow-2xl overflow-hidden rounded-sm"
+                  initial={{ rotateY: -15, rotateX: 5 }}
+                  animate={{ rotateY: [-5, -2, -5], rotateX: [2, 1, 2] }}
+                  transition={{ repeat: Infinity, duration: 12, ease: "easeInOut" }}
+                  style={{ transformStyle: "preserve-3d" }}
+                  id="canvas-stage"
+                >
                   {targetMediaUrl ? (
                     <WebGLRenderer
                       imageUrl={targetMediaUrl}
                       palette={selectedPalette}
                       controls={controls}
                       sourceStats={sourceStats}
+                      wipeEnabled={false}
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      {/* Target drop zone — centered, clean */}
-                      <div className="flex flex-col items-center gap-4">
-                        <div style={{ width: 400, height: 280 }}>
-                          <MediaUploader
-                            onUpload={handleTargetUpload}
-                            onClear={() => setTargetMediaUrl(null)}
-                            currentMediaUrl={targetMediaUrl}
-                            mediaType="image"
-                          />
-                        </div>
-                        <p className="text-[11px] tracking-[0.15em] uppercase" style={{ fontFamily: "monospace", color: "var(--text-tertiary)" }}>
-                          Drop the image you want to grade
-                        </p>
-                      </div>
+                       <div className="w-full max-w-lg px-8">
+                         <div className="reveal-mask mb-12 text-center">
+                           <h2 className="font-serif text-4xl font-light text-foreground animate-curtain">
+                              Target <span className="text-accent italic">Canvas</span>
+                           </h2>
+                         </div>
+                         <div style={{ height: 320 }}>
+                           <MediaUploader
+                             onUpload={handleTargetUpload}
+                             onClear={() => setTargetMediaUrl(null)}
+                             currentMediaUrl={targetMediaUrl}
+                             mediaType="image"
+                           />
+                         </div>
+                       </div>
                     </div>
                   )}
+                </motion.div>
 
-                </div>
-
-                {/* Bottom toolbar — floating panel toggles */}
+                {/* Spatial Toggles Bottom Right */}
                 {targetMediaUrl && (
-                  <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="flex-shrink-0 flex items-center justify-between px-4 py-2"
-                    style={{ background: "var(--surface-1)", borderTop: "1px solid var(--border)" }}
-                  >
-                    {/* Left: palette toggle */}
+                  <div className="absolute bottom-8 right-8 flex items-center gap-8 z-50">
                     <button
-                      onClick={() => { setPaletteOpen(o => !o); setAdjustOpen(false); }}
-                      className={`tape-btn tape-btn-small gap-2 ${paletteOpen ? "btn-primary" : ""}`}
+                      onClick={() => { setAdjustOpen(false); setPaletteOpen(o => !o); }}
+                      className="gallery-btn"
                     >
-                      <Aperture className="w-3.5 h-3.5" />
-                      Palettes
+                       [ CHROMA ]
                     </button>
-
-                    {/* Center: magic match */}
-                    <button onClick={handleMagicMatch} className="tape-btn gap-1.5">
-                      <Wand2 className="w-3.5 h-3.5" /> Magic Match
-                    </button>
-
-                    {/* Right: adjustments toggle */}
                     <button
-                      onClick={() => { setAdjustOpen(o => !o); setPaletteOpen(false); }}
-                      className={`tape-btn tape-btn-small gap-2 ${adjustOpen ? "btn-primary" : ""}`}
+                      onClick={() => { setPaletteOpen(false); setAdjustOpen(o => !o); }}
+                      className="gallery-btn"
                     >
-                      <ChevronRight className={`w-3.5 h-3.5 transition-transform ${adjustOpen ? "rotate-90" : ""}`} />
-                      Adjustments
+                       [ ADJUST ]
                     </button>
-                  </motion.div>
+                  </div>
                 )}
 
-                {/* Slide-up PALETTE panel */}
+                {/* Slide-out Panels (Unboxed) */}
                 <AnimatePresence>
-                  {paletteOpen && (
+                  {(paletteOpen || adjustOpen) && (
                     <motion.div
-                      key="palette-panel"
-                      initial={{ y: "100%" }}
-                      animate={{ y: 0 }}
-                      exit={{ y: "100%" }}
-                      transition={{ type: "spring", stiffness: 380, damping: 36 }}
-                      className="absolute bottom-[49px] left-0 w-full md:w-[340px] z-30 overflow-hidden"
-                      style={{
-                        background: "var(--surface-2)",
-                        borderTop: "1px solid var(--border)",
-                        borderRight: "1px solid var(--border)",
-                        maxHeight: "55vh",
-                        borderRadius: "0 8px 0 0",
-                      }}
+                      initial={{ x: "100%" }}
+                      animate={{ x: 0 }}
+                      exit={{ x: "100%" }}
+                      transition={{ type: "tween", ease: [0.19, 1, 0.22, 1], duration: 0.6 }}
+                      className="absolute top-0 right-0 w-[400px] h-full z-40 bg-background/95 backdrop-blur-3xl border-l border-white/5"
                     >
-                      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
-                        <span className="hand-label">Palette Library</span>
-                        <button className="btn-icon" onClick={() => setPaletteOpen(false)}>
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                      <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: "calc(55vh - 44px)" }}>
+                      {paletteOpen && (
                         <PaletteSelector
                           selectedPaletteId={selectedPalette.id}
                           onSelectPalette={handleSelectPalette}
                           sourceDNA={sourceDNA}
                         />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Slide-up ADJUSTMENTS panel */}
-                <AnimatePresence>
-                  {adjustOpen && (
-                    <motion.div
-                      key="adjust-panel"
-                      initial={{ y: "100%" }}
-                      animate={{ y: 0 }}
-                      exit={{ y: "100%" }}
-                      transition={{ type: "spring", stiffness: 380, damping: 36 }}
-                      className="absolute bottom-[49px] right-0 w-full md:w-[300px] z-30 overflow-hidden"
-                      style={{
-                        background: "var(--surface-2)",
-                        borderTop: "1px solid var(--border)",
-                        borderLeft: "1px solid var(--border)",
-                        maxHeight: "55vh",
-                        borderRadius: "8px 0 0 0",
-                      }}
-                    >
-                      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
-                        <span className="hand-label">Adjustments</span>
-                        <button className="btn-icon" onClick={() => setAdjustOpen(false)}>
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                      <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: "calc(55vh - 44px)" }}>
-                        <ControlPanel controls={controls} onChange={handleControlChange} onReset={handleReset} />
-                      </div>
+                      )}
+                      {adjustOpen && (
+                        <ControlPanel controls={controls} onChange={handleControlChange} onReset={handleReset} onAutoGrade={handleAutoGrade} />
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -636,167 +478,42 @@ export default function Home() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute inset-0 overflow-y-auto no-scrollbar"
+                transition={{ duration: 1 }}
+                className="absolute inset-0 flex flex-col p-16 items-center"
               >
-                {/* Outer container — centred, max width, good padding */}
-                <div className="min-h-full flex flex-col justify-center px-6 md:px-12 py-8 gap-6 max-w-7xl mx-auto">
-
-                  {/* ── Title row ── */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.05, duration: 0.45 }}
-                    className="flex items-baseline justify-between flex-shrink-0"
-                  >
-                    <div>
-                      <h2 className="text-xl tracking-[0.25em] uppercase font-light" style={{
-                        fontFamily: "var(--font-mono), monospace",
-                        color: "var(--foreground)"
-                      }}>
-                        The Master
-                      </h2>
-                      <p className="text-[10px] tracking-[0.15em] mt-0.5" style={{ fontFamily: "monospace", color: "var(--text-tertiary)" }}>
-                        {selectedPalette.name} · Final Grade
-                      </p>
-                    </div>
-
-                    {/* Frame picker — right-aligned in title row */}
-                    <motion.div
-                      className="flex items-center gap-1.5"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.15, duration: 0.4 }}
+                 {/* Majestic Backlight via Palette DNA */}
+                 <div className="absolute inset-0 -z-10 blur-[120px] opacity-20 pointer-events-none" style={{ background: `radial-gradient(circle, rgb(${selectedPalette.colors[1].join(",")}) 0%, transparent 60%)` }} />
+                 
+                 <div className="flex flex-col items-center flex-shrink-0 mb-8 mt-4 z-20">
+                    <h2 className="font-serif text-5xl font-light mb-4 text-foreground">
+                       Final <span className="text-accent italic">Exhibition</span>
+                    </h2>
+                    <p className="micro-label opacity-50 max-w-md text-center leading-relaxed">
+                       Procedural chromatic shifts locked. The piece is ready for export.
+                    </p>
+                 </div>
+                 <div className="flex-1 min-h-0 relative z-10 p-8 w-full flex items-center justify-center">
+                    <motion.div 
+                      className="w-full max-w-6xl aspect-video relative shadow-2xl" id="canvas-stage"
+                      initial={{ scale: 0.95, rotateY: 10, rotateX: -5 }}
+                      whileHover={{ scale: 1, rotateY: 0, rotateX: 0 }}
+                      animate={{ rotateY: 5, rotateX: 2 }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
                     >
-                      <span className="hand-label mr-1.5" style={{ color: "var(--text-tertiary)" }}>Frame</span>
-                      {([
-                        { key: "none",      label: "None" },
-                        { key: "polaroid",  label: "Polaroid" },
-                        { key: "film",      label: "Film" },
-                        { key: "letterbox", label: "Letterbox" },
-                      ] as { key: FrameType; label: string }[]).map(({ key, label }) => (
-                        <button
-                          key={key}
-                          onClick={() => setFrameType(key)}
-                          className="tape-btn tape-btn-small"
-                          style={frameType === key ? {
-                            background: "var(--accent)",
-                            color: "#0f0f11",
-                            borderColor: "var(--accent)",
-                          } : undefined}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </motion.div>
-                  </motion.div>
-
-                  {/* ── 2-column body ── */}
-                  <div className="flex flex-col lg:flex-row gap-8 items-start flex-shrink-0" id="canvas-stage">
-
-                    {/* LEFT: Framed image — takes 65% on desktop */}
-                    <motion.div
-                      className="w-full lg:flex-[65]"
-                      initial={{ opacity: 0, scale: 0.97 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.2, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    >
-                      <FramedImage
-                        frameType={frameType}
-                        showNegative={showNegative}
-                        signature={signatureRef.current}
-                      >
-                        {targetMediaUrl ? (
-                          <WebGLRenderer
-                            imageUrl={targetMediaUrl}
-                            palette={selectedPalette}
-                            controls={controls}
-                            sourceStats={sourceStats}
-                            wipeEnabled={false}
-                          />
-                        ) : (
-                          <div className="flex items-center justify-center" style={{ minHeight: 260, background: "var(--surface-3)" }}>
-                            <p className="hand-label text-sm">No grade to develop.</p>
-                          </div>
-                        )}
-                      </FramedImage>
-                    </motion.div>
-
-                    {/* RIGHT: Controls panel — takes 35% on desktop */}
-                    <motion.div
-                      className="w-full lg:flex-[35] flex flex-col gap-5"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    >
-
-                      {/* Color DNA strip */}
-                      {sourceDNA && (
-                        <div>
-                          <p className="hand-label text-[9px] mb-2" style={{ color: "var(--text-tertiary)" }}>Color DNA Reference</p>
-                          <div className="flex h-5 overflow-hidden rounded-sm" style={{ border: "1px solid var(--border)" }}>
-                            {sourceDNA.map((c, i) => (
-                              <div key={i} className="flex-1" style={{ backgroundColor: `rgb(${c.join(",")})` }} />
-                            ))}
-                          </div>
-                        </div>
+                      <div className="absolute inset-0 ring-1 ring-white/10 pointer-events-none z-10" />
+                      {targetMediaUrl && (
+                        <WebGLRenderer
+                          imageUrl={targetMediaUrl}
+                          palette={selectedPalette}
+                          controls={controls}
+                          sourceStats={sourceStats}
+                        />
                       )}
-
-                      {/* Active palette swatch */}
-                      <div>
-                        <p className="hand-label text-[9px] mb-2" style={{ color: "var(--text-tertiary)" }}>Active Palette</p>
-                        <div className="flex h-5 overflow-hidden rounded-sm" style={{ border: "1px solid var(--border)" }}>
-                          {selectedPalette.colors.map((c, i) => (
-                            <div key={i} className="flex-1" style={{ backgroundColor: `rgb(${c.join(",")})` }} />
-                          ))}
-                        </div>
-                        <p className="text-[10px] mt-1.5 tracking-wider" style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>
-                          {selectedPalette.name}
-                        </p>
-                      </div>
-
-                      {/* Divider */}
-                      <div style={{ height: 1, background: "var(--border)" }} />
-
-                      {/* Director signature */}
-                      <div>
-                        <p className="hand-label text-[9px] mb-2" style={{ color: "var(--text-tertiary)" }}>Director&apos;s Signature</p>
-                        <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
-                          <SignaturePad onSign={(url) => { signatureRef.current = url; }} width={360} height={72} />
-                        </div>
-                      </div>
-
-                      {/* Divider */}
-                      <div style={{ height: 1, background: "var(--border)" }} />
-
-                      {/* Action buttons */}
-                      <div className="flex flex-col gap-2">
-                        <button
-                          onClick={handleExport}
-                          disabled={!targetMediaUrl || exporting}
-                          className="tape-btn btn-primary w-full justify-center"
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          {exporting ? "Processing…" : exported ? "Exported ✓" : "Export Image"}
-                        </button>
-                        <div className="flex gap-2">
-                          <button onClick={handleExportLUT} className="tape-btn tape-btn-small flex-1 justify-center">
-                            <Download className="w-3 h-3" /> .CUBE LUT
-                          </button>
-                          <button onClick={() => transitionTo(3)} className="tape-btn tape-btn-small flex-1 justify-center">
-                            <RotateCcw className="w-3 h-3" /> Re-Edit
-                          </button>
-                        </div>
-                      </div>
-
                     </motion.div>
-                  </div>
-
-                  {/* Bottom breathing room */}
-                  <div className="h-6 flex-shrink-0" />
-                </div>
+                 </div>
               </motion.div>
             )}
+
           </AnimatePresence>
         </div>
       </main>

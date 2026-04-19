@@ -1,5 +1,5 @@
 // Web Worker for processing video frames and extracting dominant/average colors
-// We don't import React here since it's a separate thread
+import { extractDominantColorsLAB } from "../colorEngine";
 
 self.onmessage = (e: MessageEvent) => {
   const { imageData, timestamp } = e.data;
@@ -12,9 +12,6 @@ self.onmessage = (e: MessageEvent) => {
   let bSum = 0;
   let count = 0;
   let peakR = 0, peakG = 0, peakB = 0; // Keeping track of peaks for vibe histograms
-
-  // 5 luminance buckets to extract a 5-color palette
-  const buckets = Array.from({ length: 5 }, () => ({ r: 0, g: 0, b: 0, count: 0 }));
 
   // Simple average color extraction skipping a few pixels for performance
   const step = 4 * 4; // Sample every 4th pixel to save CPU
@@ -36,25 +33,14 @@ self.onmessage = (e: MessageEvent) => {
     if (r > peakR) peakR = r;
     if (g > peakG) peakG = g;
     if (b > peakB) peakB = b;
-
-    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-    const bucketIdx = Math.min(4, Math.floor((luma / 255) * 5));
-    buckets[bucketIdx].r += r;
-    buckets[bucketIdx].g += g;
-    buckets[bucketIdx].b += b;
-    buckets[bucketIdx].count++;
   }
 
   const avgColors = count > 0 
     ? { r: Math.round(rSum / count), g: Math.round(gSum / count), b: Math.round(bSum / count) }
     : { r: 0, g: 0, b: 0 };
 
-  const palette: [number, number, number][] = buckets.map(b => {
-    if (b.count > 0) {
-      return [Math.round(b.r / b.count), Math.round(b.g / b.count), Math.round(b.b / b.count)];
-    }
-    return [avgColors.r, avgColors.g, avgColors.b];
-  });
+  // Use robust LAB-space clustering for the video frame palette (capped at 500 samples for high performance)
+  const palette = extractDominantColorsLAB(data, 5, 500);
 
   const result = {
     timestamp,

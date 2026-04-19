@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   FrameData,
   calculateEuclideanDistance,
+  extractDominantColorsLAB,
 } from "@/lib/colorEngine";
 import VibeHistogram from "./VibeHistogram";
 import {
@@ -254,26 +255,7 @@ export default function VideoBarcodeRenderer({
     ctx.drawImage(v, 0, 0, c.width, c.height);
     const data = ctx.getImageData(0, 0, c.width, c.height).data;
 
-    const buckets = Array.from({ length: 5 }, () => ({ r: 0, g: 0, b: 0, count: 0 }));
-    let rSum = 0, gSum = 0, bSum = 0, count = 0;
-    for (let i = 0; i < data.length; i += 16) {
-      if (data[i + 3] < 128) continue;
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      rSum += r; gSum += g; bSum += b; count++;
-      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-      const bucketIdx = Math.min(4, Math.floor((luma / 255) * 5));
-      buckets[bucketIdx].r += r; buckets[bucketIdx].g += g; buckets[bucketIdx].b += b; buckets[bucketIdx].count++;
-    }
-
-    const avgColors = count > 0 
-      ? { r: Math.round(rSum / count), g: Math.round(gSum / count), b: Math.round(bSum / count) }
-      : { r: 0, g: 0, b: 0 };
-
-    const paletteColors: [number, number, number][] = buckets.map(b => {
-      return b.count > 0 
-        ? [Math.round(b.r / b.count), Math.round(b.g / b.count), Math.round(b.b / b.count)]
-        : [avgColors.r, avgColors.g, avgColors.b];
-    });
+    const paletteColors = extractDominantColorsLAB(data, 5, 2000);
 
     onExtractPalette({
       id: `frame-${Date.now()}`,

@@ -21,8 +21,7 @@ export default function FramedImage({ frameType, showNegative, signature, childr
         className={`w-full overflow-hidden rounded-sm ${base}`}
         style={{ border: "1px solid var(--border)", background: "#000" }}
       >
-        {/* aspect-ratio container with absolutely-filled child */}
-        <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%" }}>
+        <div style={{ position: "relative", width: "100%", height: "60vh", minHeight: "400px" }}>
           <div style={{ position: "absolute", inset: 0 }}>{children}</div>
         </div>
       </div>
@@ -54,7 +53,7 @@ export default function FramedImage({ frameType, showNegative, signature, childr
           {signature ? (
             <img src={signature} alt="signature" style={{ height: 36, opacity: 0.7 }} />
           ) : (
-            <p style={{ fontFamily: "monospace", fontSize: 11, color: "#8a7a6a", letterSpacing: "0.1em" }}>
+            <p style={{ fontFamily: "var(--font-hand), cursive", fontSize: 12, color: "#8a7a6a", letterSpacing: "0.1em", fontWeight: "bold" }}>
               — Director&apos;s Palette —
             </p>
           )}
@@ -96,10 +95,10 @@ export default function FramedImage({ frameType, showNegative, signature, childr
 
         {/* Film info strip */}
         <div className="flex items-center justify-between px-4 py-1" style={{ background: "#0a0a0a" }}>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: "#3a3a3a", letterSpacing: "0.2em" }}>
+          <span style={{ fontFamily: "var(--font-sans), sans-serif", fontSize: 10, color: "#5a5a5a", letterSpacing: "0.2em", fontWeight: "bold" }}>
             DIRECTORS PALETTE
           </span>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: "#3a3a3a", letterSpacing: "0.2em" }}>
+          <span style={{ fontFamily: "var(--font-sans), sans-serif", fontSize: 10, color: "#5a5a5a", letterSpacing: "0.2em", fontWeight: "bold" }}>
             KODAK 5219 · 35mm
           </span>
         </div>
@@ -121,10 +120,10 @@ export default function FramedImage({ frameType, showNegative, signature, childr
         </div>
         {/* Bottom bar with info */}
         <div className="flex items-center justify-between px-6" style={{ height: 40, background: "#000" }}>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: "#333", letterSpacing: "0.2em" }}>
+          <span style={{ fontFamily: "var(--font-sans), sans-serif", fontSize: 9, color: "#5a5a5a", letterSpacing: "0.2em", fontWeight: "bold" }}>
             2.39 : 1
           </span>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: "#333", letterSpacing: "0.2em" }}>
+          <span style={{ fontFamily: "var(--font-sans), sans-serif", fontSize: 9, color: "#5a5a5a", letterSpacing: "0.2em", fontWeight: "bold" }}>
             DIRECTOR&apos;S PALETTE
           </span>
         </div>

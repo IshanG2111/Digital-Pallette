@@ -1,110 +1,81 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Aperture } from "lucide-react";
 
 interface StudioOpenerProps {
   onComplete: () => void;
 }
 
 export default function StudioOpener({ onComplete }: StudioOpenerProps) {
-  const [phase, setPhase] = useState<"intro" | "logo" | "out">("intro");
+  const [isClosing, setIsClosing] = useState(false);
 
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase("logo"), 300);
-    const t2 = setTimeout(() => setPhase("out"), 2200);
-    const t3 = setTimeout(() => onComplete(), 2800);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [onComplete]);
+  const handleStart = () => {
+    setIsClosing(true);
+    setTimeout(onComplete, 1500); 
+  };
 
   return (
     <AnimatePresence>
-      {phase !== "out" && (
+      {!isClosing && (
         <motion.div
-          className="fixed inset-0 z-[500] flex flex-col items-center justify-center"
-          style={{ background: "#0a0a0c" }}
-          initial={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.6, ease: "easeInOut" }}
+          key="opener"
+          className="fixed inset-0 z-[500] flex flex-col items-center justify-center overflow-hidden"
+          style={{ background: "var(--background)" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.05 }}
+          transition={{ duration: 1.5, ease: [0.19, 1, 0.22, 1] }}
         >
-          {/* Subtle grid lines */}
-          <div className="absolute inset-0 pointer-events-none" style={{
-            backgroundImage: `
-              linear-gradient(rgba(212,168,83,0.03) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(212,168,83,0.03) 1px, transparent 1px)
-            `,
-            backgroundSize: "80px 80px"
-          }} />
+          {/* Majestic ambient lighting */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] max-w-[800px] max-h-[800px] rounded-full opacity-[0.03] blur-[100px] pointer-events-none" 
+               style={{ background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)" }} />
 
-          <AnimatePresence>
-            {phase === "logo" && (
-              <motion.div
-                className="flex flex-col items-center gap-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          <div className="flex flex-col items-center z-10 text-center max-w-4xl px-8">
+            
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.5, delay: 0.2, ease: [0.19, 1, 0.22, 1] }}
+              className="mb-12"
+            >
+              <Aperture className="w-12 h-12 text-accent opacity-50 mx-auto mb-8 animate-spin-slow" strokeWidth={1} />
+              
+              <h1 className="font-serif text-6xl md:text-8xl font-light mb-8 leading-[1.1] tracking-tight">
+                The Architect of <br/><span className="text-accent italic">Light & Color</span>
+              </h1>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.5, delay: 0.8, ease: [0.19, 1, 0.22, 1] }}
+              className="flex flex-col items-center"
+            >
+              <p className="font-serif text-xl md:text-2xl opacity-60 max-w-2xl leading-relaxed mb-16 italic">
+                "We do not merely capture an image; we dictate the geometry of its mood, rewriting the chromosomal structure of its palette."
+              </p>
+
+              <button
+                onClick={handleStart}
+                className="group relative flex items-center justify-center"
               >
-                {/* Circular logo mark */}
-                <motion.div
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative"
-                >
-                  <div className="w-16 h-16 rounded-full border-2 flex items-center justify-center"
-                    style={{ borderColor: "#d4a853", background: "rgba(212,168,83,0.08)" }}>
-                    <svg viewBox="0 0 32 32" className="w-8 h-8" fill="none">
-                      <circle cx="16" cy="16" r="5" fill="#d4a853" opacity="0.9"/>
-                      <circle cx="16" cy="16" r="10" stroke="#d4a853" strokeWidth="1" opacity="0.4"/>
-                      <path d="M16 6 L16 8 M16 24 L16 26 M6 16 L8 16 M24 16 L26 16" stroke="#d4a853" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  {/* Outer ring animation */}
-                  <motion.div
-                    className="absolute inset-0 rounded-full"
-                    style={{ border: "1px solid #d4a853" }}
-                    initial={{ scale: 1, opacity: 0.6 }}
-                    animate={{ scale: 1.5, opacity: 0 }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
-                  />
-                </motion.div>
+                <div className="absolute inset-0 bg-accent blur-[20px] opacity-0 group-hover:opacity-20 transition-opacity duration-1000" />
+                <span className="text-[11px] md:text-[13px] font-bold uppercase tracking-[0.4em] px-12 py-6 border border-white/10 hover:border-accent/50 hover:bg-white/5 transition-all duration-700">
+                  Let's start this journey
+                </span>
+                
+                {/* Micro animations on hover */}
+                <div className="absolute top-0 left-0 w-2 h-[1px] bg-accent scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500" />
+                <div className="absolute top-0 left-0 w-[1px] h-2 bg-accent scale-y-0 group-hover:scale-y-100 origin-top transition-transform duration-500" />
+                
+                <div className="absolute bottom-0 right-0 w-2 h-[1px] bg-accent scale-x-0 group-hover:scale-x-100 origin-right transition-transform duration-500" />
+                <div className="absolute bottom-0 right-0 w-[1px] h-2 bg-accent scale-y-0 group-hover:scale-y-100 origin-bottom transition-transform duration-500" />
+              </button>
+            </motion.div>
 
-                {/* App name */}
-                <div className="flex flex-col items-center gap-2">
-                  <motion.h1
-                    className="text-2xl font-light tracking-[0.4em] uppercase"
-                    style={{ 
-                      color: "#e8e8ea", 
-                      fontFamily: "var(--font-mono), monospace",
-                      letterSpacing: "0.4em"
-                    }}
-                    initial={{ opacity: 0, letterSpacing: "0.8em" }}
-                    animate={{ opacity: 1, letterSpacing: "0.4em" }}
-                    transition={{ delay: 0.3, duration: 0.8, ease: "easeOut" }}
-                  >
-                    Director&apos;s Palette
-                  </motion.h1>
-                  <motion.div
-                    className="h-px w-48"
-                    style={{ background: "linear-gradient(90deg, transparent, #d4a853, transparent)" }}
-                    initial={{ scaleX: 0, opacity: 0 }}
-                    animate={{ scaleX: 1, opacity: 1 }}
-                    transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
-                  />
-                  <motion.p
-                    className="text-xs tracking-widest uppercase"
-                    style={{ color: "#5a5a68", fontFamily: "monospace" }}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.9, duration: 0.6 }}
-                  >
-                    Color Grading Engine
-                  </motion.p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

@@ -1,21 +1,19 @@
 import type { Metadata } from "next";
-import { Architects_Daughter } from "next/font/google";
-import { Geist_Mono } from "next/font/google";
+import { Playfair_Display, Outfit } from "next/font/google";
 import "./globals.css";
 
-const handFont = Architects_Daughter({
-  variable: "--font-hand",
-  weight: "400",
+const serifFont = Playfair_Display({
+  variable: "--font-serif",
   subsets: ["latin"],
 });
 
-const monoFont = Geist_Mono({
-  variable: "--font-mono",
+const sansFont = Outfit({
+  variable: "--font-sans",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Director's Palette — The Sketchbook Workstation",
+  title: "Director's Palette — Virtual Masterpiece",
   description: "A hand-crafted cinematic color grading tool. Extract palettes from film, grade imagery with GPU shaders, export production-ready LUTs.",
 };
 
@@ -27,7 +25,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${handFont.variable} ${monoFont.variable} h-full`}
+      className={`${serifFont.variable} ${sansFont.variable} h-full`}
     >
       {/* suppressHydrationWarning prevents hydration mismatch from browser extensions injecting attributes */}
       <body className="h-full" suppressHydrationWarning>{children}</body>

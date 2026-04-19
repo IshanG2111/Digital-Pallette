@@ -9,25 +9,25 @@ interface SmpteLoaderProps {
   animate?: boolean;
 }
 
-// Classic SMPTE color bars, but in the cinema palette
+// Hand-drawn SMPTE color bars in muted chalk pastels
 const BARS = [
-  { color: "#c0c0c0", weight: 6 },  // White
-  { color: "#c0c000", weight: 6 },  // Yellow
-  { color: "#00c0c0", weight: 6 },  // Cyan
-  { color: "#00c000", weight: 6 },  // Green
-  { color: "#c000c0", weight: 6 },  // Magenta
-  { color: "#c00000", weight: 6 },  // Red
-  { color: "#0000c0", weight: 6 },  // Blue
+  { color: "#f4f0ec", weight: 6 },  // Chalk White
+  { color: "#e5c07b", weight: 6 },  // Chalk Yellow
+  { color: "#6aa49c", weight: 6 },  // Muted Teal
+  { color: "#88c096", weight: 6 },  // Chalk Green
+  { color: "#d0879f", weight: 6 },  // Dusty Pink
+  { color: "#db7676", weight: 6 },  // Chalk Red
+  { color: "#6f88a3", weight: 6 },  // Slate Blue
 ];
 
 const BOTTOM_BARS = [
-  { color: "#0000c0", weight: 5 },
-  { color: "#131313", weight: 5 },
-  { color: "#c000c0", weight: 5 },
-  { color: "#131313", weight: 10 },
-  { color: "#0000c0", weight: 5 },
-  { color: "#131313", weight: 5 },
-  { color: "#c0c0c0", weight: 5 },
+  { color: "#6f88a3", weight: 5 },  // Blue
+  { color: "#363b40", weight: 5 },  // Dark
+  { color: "#d0879f", weight: 5 },  // Pink
+  { color: "#363b40", weight: 10 }, // Dark
+  { color: "#6f88a3", weight: 5 },  // Blue
+  { color: "#363b40", weight: 5 },  // Dark
+  { color: "#f4f0ec", weight: 5 },  // White
 ];
 
 export default function SmpteLoader({ message = "PLEASE STAND BACK", progress, animate: _animate = true }: SmpteLoaderProps) {
@@ -41,56 +41,70 @@ export default function SmpteLoader({ message = "PLEASE STAND BACK", progress, a
   }, []);
 
   return (
-    <div className="relative w-full h-full min-h-[200px] flex flex-col overflow-hidden rounded-[4px]" style={{ background: "#000" }}>
-      {/* Top 75% — Color bars */}
-      <div className="flex" style={{ flex: "0 0 75%" }}>
-        {BARS.map((bar, i) => (
-          <div
-            key={i}
-            className="h-full"
-            style={{ flex: bar.weight, backgroundColor: bar.color }}
-          />
-        ))}
-      </div>
+    <div className="relative w-full h-full min-h-[200px] flex flex-col overflow-hidden rounded-[8px_255px_12px_25px/255px_8px_225px_12px]" style={{ background: "#25282c" }}>
+      {/* Hand-drawn SVG Filter */}
+      <svg width="0" height="0" className="absolute pointer-events-none">
+        <filter id="chalk-smpte" x="-20%" y="-20%" width="140%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="4" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+          {/* Blend to make it rougher */}
+          <feComposite in="SourceGraphic" in2="displaced" operator="in" />
+        </filter>
+      </svg>
 
-      {/* Bottom 25% — SMPTE secondary strip */}
-      <div className="flex" style={{ flex: "0 0 25%" }}>
-        {BOTTOM_BARS.map((bar, i) => (
-          <div
-            key={i}
-            className="h-full"
-            style={{ flex: bar.weight, backgroundColor: bar.color }}
-          />
-        ))}
+      <div className="absolute inset-0 z-0 flex flex-col" style={{ filter: "url(#chalk-smpte)", opacity: 0.85 }}>
+        {/* Top 75% — Color bars */}
+        <div className="flex" style={{ flex: "0 0 75%" }}>
+          {BARS.map((bar, i) => (
+            <div
+              key={`top-${i}`}
+              className="h-full"
+              style={{ flex: bar.weight, backgroundColor: bar.color }}
+            />
+          ))}
+        </div>
+
+        {/* Bottom 25% — SMPTE secondary strip */}
+        <div className="flex" style={{ flex: "0 0 25%" }}>
+          {BOTTOM_BARS.map((bar, i) => (
+            <div
+              key={`bottom-${i}`}
+              className="h-full"
+              style={{ flex: bar.weight, backgroundColor: bar.color }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Overlay: "PLEASE STAND BACK" message */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4">
         <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
+          initial={{ opacity: 0, scale: 0.96, rotate: -2 }}
+          animate={{ opacity: 1, scale: 1, rotate: 1 }}
+          transition={{ duration: 0.5, type: "spring" }}
           style={{
-            background: "rgba(0,0,0,0.82)",
-            border: "1px solid rgba(212,168,83,0.3)",
+            background: "rgba(37,40,44,0.85)",
+            border: "2px solid rgba(229,192,123,0.4)",
+            borderRadius: "255px 2px 225px 3px / 3px 255px 5px 25px",
             backdropFilter: "blur(4px)",
+            boxShadow: "2px 3px 0px rgba(0,0,0,0.3)"
           }}
-          className="px-8 py-5 rounded-sm text-center max-w-xs"
+          className="px-8 py-5 text-center max-w-xs"
         >
-          <p className="text-sm uppercase tracking-[0.3em]" style={{ 
-            fontFamily: "monospace", color: "#e8e8ea", letterSpacing: "0.3em" 
+          <p className="text-sm font-bold tracking-[0.15em] uppercase" style={{ 
+            fontFamily: "var(--font-hand), cursive", color: "#f4f0ec"
           }}>
             {message}{dots}
           </p>
           {progress !== undefined && (
             <div className="mt-4">
-              <div className="h-px w-full" style={{ background: "rgba(58,58,72,1)" }}>
+              <div className="h-2 w-full rounded-sm" style={{ background: "rgba(68,74,71,1)" }}>
                 <motion.div
-                  className="h-full"
-                  style={{ background: "#d4a853", width: `${progress}%`, transition: "width 0.3s ease" }}
+                  className="h-full rounded-sm"
+                  style={{ background: "#e5c07b", width: `${progress}%`, transition: "width 0.3s ease" }}
                 />
               </div>
-              <p className="text-[10px] mt-2 tabular-nums" style={{ color: "#5a5a68", fontFamily: "monospace" }}>
+              <p className="text-[12px] font-bold mt-2 tabular-nums" style={{ color: "#aeb5b0", fontFamily: "var(--font-hand), cursive" }}>
                 {Math.round(progress)}%
               </p>
             </div>
